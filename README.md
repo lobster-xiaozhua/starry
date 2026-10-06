@@ -138,3 +138,8 @@ Starry 的 Agent 已从「单一笔记工具助手」升级为**多 Agent 协作
 - 一条龙开箱：后端 `/health` + Agent `/health` 健康检查，Compose 按健康顺序启动。
 - 初始管理员密码可通过 `ADMIN_PASSWORD` 指定（留空则随机打印）。
 - 空数据一键体验：工作台「一键加载示例」/ 笔记页「加载示例笔记」（幂等）。
+- 多 Agent 协作平台（supervisor + 4 个子 agent）、长程任务、知识库 RAG 与免费网络搜索。
+- 新增「知识库」界面（`/knowledge`）：文本入库、相似检索、文档管理；并含长程任务提交与实时进度。
+- 长程任务端点（`POST /api/agent/tasks`、`/stream`）在 nginx 与 Vite 中正确代理至 Agent 服务。
+- 后端首组单元测试（知识库分块与向量序列化，表驱动）。
+- 前端按变更频率拆分 vendor 包，应用主包 1160 kB → 159 kB。
