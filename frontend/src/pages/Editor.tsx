@@ -5,8 +5,8 @@ import {
   Input,
   Button,
   Spin,
-  Tag,
   Tooltip,
+  Select,
 } from 'antd'
 import {
   ArrowLeft,
@@ -15,6 +15,7 @@ import {
   Download,
   Archive,
   Loader,
+  Sparkles,
 } from 'lucide-react'
 import {
   getNote,
@@ -22,12 +23,14 @@ import {
   setArchived,
   uploadImage,
   exportMarkdown,
+  listTags,
 } from '../api/notes'
 import { useSSE } from '../api/useSSE'
 import { NoteItem, useDebounce } from '../types'
 import { useTheme } from '../theme'
 import { downloadBlob } from '../utils'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -37,6 +40,7 @@ export default function EditorPage() {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [tags, setTags] = useState<string[]>([])
+  const [tagOptions, setTagOptions] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [online, setOnline] = useState(navigator.onLine)
@@ -63,7 +67,7 @@ export default function EditorPage() {
       setNote(n)
       setTitle(n.title)
       setBody(n.body)
-      setTags(n.tags)
+      setTags(n.tags ?? [])
       lastSyncRef.current = n.updatedAt
       dirtyRef.current = false
       setStale(false)
@@ -75,6 +79,12 @@ export default function EditorPage() {
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    listTags()
+      .then((rows) => setTagOptions(rows.map((r) => r.name)))
+      .catch(() => {})
+  }, [])
 
   const onSSEEvent = useCallback(
     (ev: { type: string; noteId: string }) => {
@@ -118,7 +128,8 @@ export default function EditorPage() {
   const debouncedBody = useDebounce(body, 300)
 
   const preview = useMemo(() => {
-    return marked.parse(debouncedBody || '') as string
+    const html = marked.parse(debouncedBody || '') as string
+    return DOMPurify.sanitize(html)
   }, [debouncedBody])
 
   const handleSave = async () => {
@@ -161,6 +172,12 @@ export default function EditorPage() {
     }
   }
 
+  // 把当前笔记交给 AI 助手处理：组装成提示词并跳转到工作模式，输入已预填。
+  const handleAiProcess = () => {
+    const prompt = `请帮我阅读并优化以下笔记，给出结构化的润色与补充建议：\n\n# ${title || '无标题'}\n\n${body}`
+    navigate('/agent', { state: { draft: prompt } })
+  }
+
   if (!note) {
     return (
       <div style={{ display: 'grid', placeItems: 'center', height: '100vh' }}>
@@ -174,7 +191,7 @@ export default function EditorPage() {
       <div className="main-header">
         <Button
           icon={<ArrowLeft size={14} />}
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/notes')}
           type="text"
         >
           返回
@@ -189,34 +206,24 @@ export default function EditorPage() {
           style={{ flex: 1, maxWidth: 400, fontWeight: 600 }}
           bordered={false}
         />
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {tags.map((t) => (
-            <Tag
-              key={t}
-             closable
-              onClose={() => {
-                setTags((prev) => prev.filter((x) => x !== t))
-                dirtyRef.current = true
-              }}
-             color="processing"
-            >
-              #{t}
-            </Tag>
-          ))}
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <Tooltip title="添加标签">
-            <Button
-              size="small"
-              onClick={() => {
-                const t = prompt('标签名')
-               if (t && t.trim() && !tags.includes(t.trim())) {
-                 setTags((prev) => [...prev, t.trim()])
-                  dirtyRef.current = true
-               }
-              }}
-            >
-              +标签
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Select
+            mode="tags"
+            value={tags}
+            options={tagOptions.map((t) => ({ label: '#' + t, value: t }))}
+            onChange={(vals: string[]) => {
+              setTags(vals)
+              dirtyRef.current = true
+            }}
+            placeholder="标签"
+            style={{ minWidth: 160 }}
+            size="small"
+            maxTagCount="responsive"
+            suffixIcon={null}
+          />
+          <Tooltip title="让 AI 处理">
+            <Button size="small" icon={<Sparkles size={14} />} onClick={handleAiProcess}>
+              让 AI 处理
             </Button>
           </Tooltip>
           <Tooltip title="上传图片">

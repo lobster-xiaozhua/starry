@@ -126,9 +126,15 @@ func (s *DB) ListNotes(q NoteListQuery) ([]model.NoteWithTags, int64, error) {
 		return nil, 0, err
 	}
 	for i := range notes {
+		// 无标签的笔记在 tagMap 中无对应键，取零值为 nil；
+		// 统一返回空切片，避免前端按 null 处理时访问 .length 崩溃（白屏）。
+		tags := tagMap[notes[i].ID.String()]
+		if tags == nil {
+			tags = []string{}
+		}
 		out = append(out, model.NoteWithTags{
 			Note: notes[i],
-			Tags: tagMap[notes[i].ID.String()],
+			Tags: tags,
 		})
 	}
 	return out, total, nil

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Button, Input, Spin, Modal, App } from 'antd'
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
+import { Button, Input, Spin, Modal, App, Tooltip } from 'antd'
 import {
   ArrowLeft,
   Plus,
@@ -9,31 +9,69 @@ import {
   Wrench,
   Bot,
   User,
+  Square,
+  Copy,
+  NotebookPen,
+  Sparkles,
 } from 'lucide-react'
 import {
   listConversations,
   createConversation,
   deleteConversation,
+  renameConversation,
   listMessages,
   streamChat,
   type Conversation,
   type AgentMessage,
   type AgentSSEEvent,
 } from '../api/agent'
+import { createNote } from '../api/notes'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 interface DisplayMessage {
   id: string
   role: string
   content?: string
+  toolId?: string
   toolName?: string
   toolArgs?: string
   toolResult?: string
   streaming?: boolean
 }
 
-export default function Chat() {
+const SUGGESTIONS: Record<'daily' | 'work', string[]> = {
+  daily: [
+    '帮我写一段产品发布文案',
+    '用通俗语言解释一下量子计算',
+    '给我三个周末亲子活动建议',
+  ],
+  work: [
+    '总结我最近的笔记',
+    '帮我把今天的待办整理成一份笔记',
+    '在我的笔记里搜一下项目计划',
+  ],
+}
+
+function firstLine(text: string, max = 20): string {
+  const line = text
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.length > 0) ?? text.trim()
+  const collapsed = line.replace(/\s+/g, ' ').trim()
+  const runes = Array.from(collapsed)
+  return runes.length > max ? runes.slice(0, max).join('') + '…' : collapsed
+}
+
+function renderMarkdown(content: string): string {
+  const html = marked.parse(content || '') as string
+  return DOMPurify.sanitize(html)
+}
+
+export default function Chat({ mode = 'work' }: { mode?: 'daily' | 'work' }) {
   const navigate = useNavigate()
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
   const { message: antdMessage } = App.useApp()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConv, setActiveConv] = useState<string | null>(null)
@@ -43,9 +81,12 @@ export default function Chat() {
   const [loadingConv, setLoadingConv] = useState(false)
   const [showNew, setShowNew] = useState(false)
   const [newTitle, setNewTitle] = useState('')
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const skipNextLoadRef = useRef(false)
+  const autoTitledRef = useRef<Set<string>>(new Set())
 
   const loadConversations = useCallback(async () => {
     try {
@@ -59,6 +100,15 @@ export default function Chat() {
   useEffect(() => {
     loadConversations()
   }, [loadConversations])
+
+  // 从工作台/笔记跳转而来：打开指定对话，或预填一条输入
+  useEffect(() => {
+    const conv = searchParams.get('conv')
+    if (conv) setActiveConv(conv)
+    const draft = (location.state as { draft?: string } | null)?.draft
+    if (draft) setInput(draft)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const loadMessages = useCallback(async (convId: string) => {
     setLoadingConv(true)
@@ -85,7 +135,6 @@ export default function Chat() {
             }
           }
         } else if (m.role === 'tool') {
-          // attach result to the last tool message
           const last = display[display.length - 1]
           if (last && last.role === 'tool') {
             last.toolResult = m.content
@@ -115,6 +164,14 @@ export default function Chat() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
+
+  const handleStop = () => {
+    abortRef.current?.abort()
+    setLoading(false)
+    setMessages((prev) =>
+      prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)),
+    )
+  }
 
   const handleCreate = async () => {
     try {
@@ -148,9 +205,25 @@ export default function Chat() {
     })
   }
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return
+  const handleRename = async () => {
+    if (!renaming || !renameValue.trim()) return
+    const id = renaming
+    const title = renameValue.trim()
+    setRenaming(null)
+    setRenameValue('')
+    try {
+      await renameConversation(id, title)
+      setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)))
+    } catch {
+      antdMessage.error('重命名失败')
+    }
+  }
+
+  const handleSend = async (override?: string) => {
+    const text = (override ?? input).trim()
+    if (!text || loading) return
     let convId = activeConv
+    const needTitle = !convId || !conversations.find((c) => c.id === convId) || conversations.find((c) => c.id === convId)?.title === '新对话'
     if (!convId) {
       try {
         const conv = await createConversation('新对话')
@@ -163,10 +236,9 @@ export default function Chat() {
         return
       }
     }
-    const userMsg = input.trim()
+    const userMsg = text
     setInput('')
 
-    // 乐观添加用户消息
     const userDisplayId = Date.now() + '-user'
     const assistantId = Date.now() + '-assistant'
     setMessages((prev) => [
@@ -190,22 +262,31 @@ export default function Chat() {
             ),
           )
         } else if (ev.event === 'tool_call') {
-          setMessages((prev) => [
-            ...prev.slice(0, -1),
-            {
-              id: Date.now() + '-tc',
-              role: 'tool',
-              toolName: ev.data.name,
-              toolArgs: JSON.stringify(ev.data.args, null, 2),
-            },
-            { id: assistantId, role: 'assistant', content: assistantContent, streaming: true },
-          ])
-        } else if (ev.event === 'tool_result') {
+          const toolId = ev.data.id as string | undefined
+          const toolMsg: DisplayMessage = {
+            id: toolId ? 'tc-' + toolId : Date.now() + '-tc',
+            role: 'tool',
+            toolId,
+            toolName: ev.data.name,
+            toolArgs: JSON.stringify(ev.data.args, null, 2),
+            streaming: true,
+          }
           setMessages((prev) => {
-            const idx = prev.findIndex((m) => m.role === 'tool' && m.toolName === ev.data.name && !m.toolResult)
+            const withoutLast = prev.slice(0, -1)
+            return [...withoutLast, toolMsg, prev[prev.length - 1]]
+          })
+        } else if (ev.event === 'tool_result') {
+          const toolId = ev.data.id as string | undefined
+          setMessages((prev) => {
+            const idx = prev.findIndex(
+              (m) =>
+                m.role === 'tool' &&
+                !m.toolResult &&
+                (toolId ? m.toolId === toolId : m.toolName === ev.data.name),
+            )
             if (idx >= 0) {
               const next = [...prev]
-              next[idx] = { ...next[idx], toolResult: ev.data.result }
+              next[idx] = { ...next[idx], toolResult: ev.data.result, streaming: false }
               return next
             }
             return prev
@@ -237,9 +318,39 @@ export default function Chat() {
       () => {
         setLoading(false)
         loadConversations()
+        // 首条消息后自动命名对话，提升侧栏可读性
+        if (needTitle && !autoTitledRef.current.has(convId)) {
+          autoTitledRef.current.add(convId)
+          const title = firstLine(userMsg)
+          renameConversation(convId, title)
+            .then(() => setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, title } : c))))
+            .catch(() => {})
+        }
       },
+      mode,
     )
     abortRef.current = controller
+  }
+
+  const copyMessage = (content: string) => {
+    navigator.clipboard?.writeText(content).then(
+      () => antdMessage.success('已复制'),
+      () => antdMessage.error('复制失败'),
+    )
+  }
+
+  const saveToNote = async (content: string) => {
+    try {
+      const note = await createNote({
+        title: firstLine(content, 30) || '来自对话的笔记',
+        body: content,
+        tags: ['ai'],
+      })
+      antdMessage.success('已存入云笔记')
+      navigate(`/notes/${note.id}`)
+    } catch {
+      antdMessage.error('存入笔记失败')
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -248,6 +359,8 @@ export default function Chat() {
       handleSend()
     }
   }
+
+  const suggestions = SUGGESTIONS[mode]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#f8fafc' }}>
@@ -262,7 +375,7 @@ export default function Chat() {
         </Button>
         <div style={{ color: '#f1f5f9', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
           <Bot size={18} />
-          AI 助手
+          {mode === 'daily' ? 'AI 对话' : 'AI 助手'}
         </div>
       </div>
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
@@ -278,6 +391,11 @@ export default function Chat() {
               <div
                 key={conv.id}
                 onClick={() => setActiveConv(conv.id)}
+                onDoubleClick={() => {
+                  setRenaming(conv.id)
+                  setRenameValue(conv.title)
+                }}
+                title="双击重命名"
                 style={{
                   padding: '10px 12px',
                   cursor: 'pointer',
@@ -313,13 +431,38 @@ export default function Chat() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
             {!activeConv ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, color: '#94a3b8' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16, color: '#94a3b8' }}>
                 <Bot size={48} />
                 <span style={{ fontSize: 16 }}>选择一个对话或新建对话开始</span>
               </div>
             ) : loadingConv ? (
               <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}>
                 <Spin />
+              </div>
+            ) : messages.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
+                <Sparkles size={40} style={{ color: '#22c55e' }} />
+                <div style={{ fontSize: 14, color: '#64748b' }}>试试这些示例：</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: 'min(420px, 90%)' }}>
+                  {suggestions.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => handleSend(s)}
+                      style={{
+                        textAlign: 'left',
+                        padding: '10px 14px',
+                        borderRadius: 10,
+                        border: '1px solid #e2e8f0',
+                        background: '#fff',
+                        color: '#0f172a',
+                        cursor: 'pointer',
+                        fontSize: 14,
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : (
               messages.map((m) => {
@@ -370,18 +513,30 @@ export default function Chat() {
                       }}>
                         {isUser ? <User size={16} /> : <Bot size={16} />}
                       </div>
-                      <div style={{
-                        background: isUser ? '#0f172a' : '#fff',
-                        color: isUser ? '#f1f5f9' : '#0f172a',
-                        padding: '10px 16px',
-                        borderRadius: 12,
-                        border: isUser ? 'none' : '1px solid #e2e8f0',
-                        fontSize: 14,
-                        lineHeight: 1.7,
-                        wordBreak: 'break-word',
-                      }} dangerouslySetInnerHTML={{
-                        __html: marked.parse(m.content || (m.streaming ? '思考中…' : '')) as string,
-                      }} />
+                      <div>
+                        <div style={{
+                          background: isUser ? '#0f172a' : '#fff',
+                          color: isUser ? '#f1f5f9' : '#0f172a',
+                          padding: '10px 16px',
+                          borderRadius: 12,
+                          border: isUser ? 'none' : '1px solid #e2e8f0',
+                          fontSize: 14,
+                          lineHeight: 1.7,
+                          wordBreak: 'break-word',
+                        }} dangerouslySetInnerHTML={{
+                          __html: renderMarkdown(m.content || (m.streaming ? '思考中…' : '')),
+                        }} />
+                        {!isUser && !m.streaming && (
+                          <div style={{ display: 'flex', gap: 4, marginTop: 4, justifyContent: 'flex-start' }}>
+                            <Tooltip title="复制">
+                              <Button type="text" size="small" icon={<Copy size={13} />} onClick={() => copyMessage(m.content || '')} />
+                            </Tooltip>
+                            <Tooltip title="存为笔记">
+                              <Button type="text" size="small" icon={<NotebookPen size={13} />} onClick={() => saveToNote(m.content || '')} />
+                            </Tooltip>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
@@ -400,13 +555,18 @@ export default function Chat() {
                 style={{ flex: 1, borderRadius: 8 }}
                 disabled={loading}
               />
-              <Button
-                type="primary"
-                icon={<Send size={14} />}
-                onClick={handleSend}
-                loading={loading}
-                style={{ height: 'auto' }}
-              />
+              {loading ? (
+                <Button danger icon={<Square size={14} />} onClick={handleStop} style={{ height: 'auto' }}>
+                  停止
+                </Button>
+              ) : (
+                <Button
+                  type="primary"
+                  icon={<Send size={14} />}
+                  onClick={() => handleSend()}
+                  style={{ height: 'auto' }}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -424,6 +584,21 @@ export default function Chat() {
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
           onPressEnter={handleCreate}
+        />
+      </Modal>
+      <Modal
+        title="重命名对话"
+        open={renaming !== null}
+        onOk={handleRename}
+        onCancel={() => setRenaming(null)}
+        okText="保存"
+      >
+        <Input
+          autoFocus
+          placeholder="对话标题"
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onPressEnter={handleRename}
         />
       </Modal>
     </div>

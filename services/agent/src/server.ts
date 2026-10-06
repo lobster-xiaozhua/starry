@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import { authMiddleware } from "./jwt.js";
 import { requestContext } from "./context.js";
-import { agentExecutor } from "./agent.js";
+import { agentExecutor, dailyExecutor } from "./agent.js";
 import { createModel } from "./llm.js";
 import { maybeSummarize, extractUsage } from "./history.js";
 import {
@@ -19,7 +19,7 @@ import {
 } from "@langchain/core/messages";
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: process.env.AGENT_CORS_ORIGIN || "http://127.0.0.1:5173", credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
 const JWT_SECRET = process.env.JWT_SECRET || "notes-test-secret-fixed";
@@ -31,10 +31,12 @@ app.use("/api/agent", authMiddleware(JWT_SECRET));
 app.post("/api/agent/chat", async (req, res) => {
   const userId = req.userId!;
   const token = req.userToken!;
-  const { conversationId, message } = req.body as {
+  const { conversationId, message, mode } = req.body as {
     conversationId: string;
     message: string;
+    mode?: string;
   };
+  const isDaily = mode === "daily";
 
   if (!conversationId || !message) {
     res.status(400).json({ code: 3001, message: "缺少 conversationId 或 message" });
@@ -52,6 +54,12 @@ app.post("/api/agent/chat", async (req, res) => {
     res.write(`event: ${event}\n`);
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
+
+  // 客户端断开（关闭页面/中断生成）时提前结束流式循环，避免继续消耗 LLM token。
+  let closed = false;
+  req.on("close", () => {
+    closed = true;
+  });
 
   try {
     // 1. 从 Go 后端加载对话历史（窗口裁剪 + 原始压缩在 Go 侧完成）
@@ -81,7 +89,8 @@ app.post("/api/agent/chat", async (req, res) => {
     const newMessages: BaseMessage[] = [new HumanMessage(message)];
 
     await requestContext.run({ token, userId, role: req.userRole! }, async () => {
-      const eventStream = agentExecutor.streamEvents(
+      const executor = isDaily ? dailyExecutor : agentExecutor;
+      const eventStream = executor.streamEvents(
         { messages: [...historyBase, ...newMessages] },
         { version: "v2" },
       );
@@ -97,6 +106,7 @@ app.post("/api/agent/chat", async (req, res) => {
       const pendingToolCallIds: string[] = [];
 
       for await (const event of eventStream) {
+        if (closed) break;
         // LLM token 流
         if (event.event === "on_chat_model_stream") {
           const chunk = event.data?.chunk;
@@ -129,6 +139,7 @@ app.post("/api/agent/chat", async (req, res) => {
         // 工具调用开始
         else if (event.event === "on_tool_start") {
           send("tool_call", {
+            id: event.id,
             name: event.name,
             args: event.data?.input,
           });
@@ -137,6 +148,7 @@ app.post("/api/agent/chat", async (req, res) => {
         else if (event.event === "on_tool_end") {
           const result = textContent(event.data?.output);
           send("tool_result", {
+            id: event.id,
             name: event.name,
             result: result.length > 500 ? result.slice(0, 500) + "…" : result,
           });
@@ -169,7 +181,10 @@ app.post("/api/agent/chat", async (req, res) => {
         completionTokens: agentUsage.completionTokens + summaryUsage.completionTokens,
       });
 
-      send("done", { content: assistantContent });
+      // 客户端已断开则不再下发 done，节省一次网络写入
+      if (!closed) {
+        send("done", { content: assistantContent });
+      }
     });
   } catch (err: any) {
     console.error("[agent] error:", err);

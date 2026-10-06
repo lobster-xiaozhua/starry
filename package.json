@@ -3,7 +3,6 @@
   "private": true,
   "workspaces": [
     "frontend",
-    "apps/cloud-notes",
     "packages/shared-api",
     "services/agent"
   ]

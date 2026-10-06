@@ -78,7 +78,7 @@ func main() {
 	notesHandler := handler.NewNotesHandler(notesSvc, mediaStore, broker)
 
 	r := gin.Default()
-	r.Use(middleware.CORS())
+	r.Use(middleware.CORS(cfg.CorsOrigins))
 
 	api := r.Group("/api")
 	{
@@ -126,6 +126,7 @@ func main() {
 		{
 			agent.GET("/conversations", agentHandler.ListConversations)
 			agent.POST("/conversations", agentHandler.CreateConversation)
+			agent.PATCH("/conversations/:id", agentHandler.RenameConversation)
 			agent.DELETE("/conversations/:id", agentHandler.DeleteConversation)
 			agent.GET("/conversations/:id/messages", agentHandler.ListMessages)
 			agent.POST("/conversations/:id/messages", agentHandler.SaveMessage)

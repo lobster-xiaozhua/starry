@@ -18,12 +18,20 @@ type Config struct {
 	RedisPassword string
 	RedisDB       int
 	JWTSecret     string
+	CorsOrigins   string
 	AdminUsername string
 	AdminEmail    string
 	UploadDir     string
 }
 
 func Load() *Config {
+	jwtSecret := envOr("JWT_SECRET", "")
+	if jwtSecret == "" {
+		// 未显式配置密钥时回退为随机密钥：每次重启都会让已签发令牌失效，
+		// 仅适用于本地开发。生产部署务必通过环境变量注入稳定密钥。
+		jwtSecret = generateRandomSecret()
+		log.Println("[WARN] JWT_SECRET 未配置，已使用随机密钥；重启后所有会话将失效，生产环境请显式设置")
+	}
 	return &Config{
 		Port:          envOr("PORT", "8080"),
 		DBHost:        envOr("DB_HOST", "127.0.0.1"),
@@ -34,7 +42,8 @@ func Load() *Config {
 		RedisAddr:     envOr("REDIS_ADDR", "127.0.0.1:6379"),
 		RedisPassword: os.Getenv("REDIS_PASSWORD"),
 		RedisDB:       0,
-		JWTSecret:     envOr("JWT_SECRET", generateRandomSecret()),
+		JWTSecret:     jwtSecret,
+		CorsOrigins:   envOr("CORS_ORIGINS", ""),
 		AdminUsername: envOr("ADMIN_USERNAME", "admin"),
 		AdminEmail:    envOr("ADMIN_EMAIL", "admin@example.com"),
 		UploadDir:     envOr("UPLOAD_DIR", "uploads"),

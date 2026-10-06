@@ -6,10 +6,14 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
-import Home from './pages/Home'
 import Chat from './pages/Chat'
+import Home from './pages/Home'
 import AdminSettings from './pages/AdminSettings'
 import AdminUserDetail from './pages/AdminUserDetail'
+import NotesPage from './pages/Notes'
+import EditorPage from './pages/Editor'
+import AppShell from './components/AppShell'
+import { ThemeProvider, useTheme } from './theme'
 import './styles.css'
 
 const antdTheme = {
@@ -29,7 +33,6 @@ const antdTheme = {
     fontFamily:
       "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif",
   },
-  algorithm: theme.defaultAlgorithm,
 }
 
 function RequireAuth({ children, admin }: { children: JSX.Element; admin?: boolean }) {
@@ -45,9 +48,13 @@ function RequireAuth({ children, admin }: { children: JSX.Element; admin?: boole
   return children
 }
 
-export default function App() {
+function AppRoot() {
+  const { dark } = useTheme()
   return (
-    <ConfigProvider locale={zhCN} theme={antdTheme}>
+    <ConfigProvider
+      locale={zhCN}
+      theme={{ ...antdTheme, algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm }}
+    >
       <AntApp>
         <BrowserRouter>
           <Routes>
@@ -59,38 +66,44 @@ export default function App() {
               path="/"
               element={
                 <RequireAuth>
-                  <Home />
+                  <AppShell />
                 </RequireAuth>
               }
-            />
-            <Route
-              path="/chat"
-              element={
-                <RequireAuth>
-                  <Chat />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <RequireAuth admin>
-                  <AdminSettings />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/admin/users/:id"
-              element={
-                <RequireAuth admin>
-                  <AdminUserDetail />
-                </RequireAuth>
-              }
-            />
+            >
+              <Route index element={<Home />} />
+              <Route path="chat" element={<Chat mode="daily" />} />
+              <Route path="agent" element={<Chat />} />
+              <Route path="notes" element={<NotesPage />} />
+              <Route path="notes/:id" element={<EditorPage />} />
+              <Route
+                path="admin"
+                element={
+                  <RequireAuth admin>
+                    <AdminSettings />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="admin/users/:id"
+                element={
+                  <RequireAuth admin>
+                    <AdminUserDetail />
+                  </RequireAuth>
+                }
+              />
+            </Route>
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </BrowserRouter>
       </AntApp>
     </ConfigProvider>
+  )
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppRoot />
+    </ThemeProvider>
   )
 }

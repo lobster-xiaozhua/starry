@@ -15,8 +15,6 @@ type Props = {
   tagVersion: number
 }
 
-const ACCOUNT_PORT = 5173
-
 export default function Sidebar({
   selectedTags,
   onToggleTag,
@@ -48,8 +46,6 @@ export default function Sidebar({
     tokenStore.clear()
     navigate('/login', { replace: true })
   }, [navigate])
-
-  const accountUrl = `${window.location.protocol}//${window.location.hostname}:${ACCOUNT_PORT}/`
 
   return (
     <aside className="sidebar">
@@ -153,20 +149,6 @@ export default function Sidebar({
             </span>
           </>
         )}
-        <a
-          href={accountUrl}
-          target="_blank"
-          rel="noreferrer"
-          style={{
-            fontSize: 12,
-            color: 'var(--text-secondary)',
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
-          }}
-          title="账号管理"
-        >
-          账号
-        </a>
         <button
           onClick={handleLogout}
           aria-label="退出登录"

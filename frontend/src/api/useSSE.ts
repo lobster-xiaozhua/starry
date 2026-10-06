@@ -14,6 +14,8 @@ type Listener = (ev: SSEEvent) => void
  *   服务端回放 seq > lastSeq 的事件。
  * - 接收 `session` 事件后将会话 ID 写入 sseSession，供 REST 请求
  *   携带 X-Session-Id 头，使 broker 跳过来源会话、避免回环。
+ *
+ * 注：token 经 URL 传递为已知安全隐患，后续将在 Phase 0 改为一次性 ticket。
  */
 export function useSSE(onEvent: Listener) {
   const esRef = useRef<EventSource | null>(null)

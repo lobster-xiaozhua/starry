@@ -35,6 +35,10 @@ export async function deleteConversation(id: string): Promise<void> {
   await api.delete(`/agent/conversations/${id}`)
 }
 
+export async function renameConversation(id: string, title: string): Promise<void> {
+  await api.patch(`/agent/conversations/${id}`, { title })
+}
+
 export async function listMessages(conversationId: string): Promise<AgentMessage[]> {
   const res = await api.get<ApiResponse<{ messages: AgentMessage[] }>>(
     `/agent/conversations/${conversationId}/messages`,
@@ -46,6 +50,7 @@ export async function listMessages(conversationId: string): Promise<AgentMessage
 export interface AgentSSEEvent {
   event: string
   data: {
+    id?: string
     content?: string
     name?: string
     args?: unknown
@@ -64,6 +69,7 @@ export function streamChat(
   onEvent: (ev: AgentSSEEvent) => void,
   onError?: (err: Error) => void,
   onClose?: () => void,
+  mode: 'daily' | 'work' = 'work',
 ): AbortController {
   const controller = new AbortController()
   const token = tokenStore.access ?? ''
@@ -74,7 +80,7 @@ export function streamChat(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ conversationId, message }),
+    body: JSON.stringify({ conversationId, message, mode }),
     signal: controller.signal,
   })
     .then(async (res) => {

@@ -199,22 +199,43 @@ func (s *NotesService) SaveAttachment(ctx context.Context, a *model.Attachment) 
 	return s.db.SaveAttachment(a)
 }
 
-// ExportAll 导出全量笔记（含稳定 ID 与标签）。
+// ExportAll 导出全量笔记（含稳定 ID 与标签）。分页累计，避免单次 Size 上限
+// 静默截断导致笔记数超过上限时导出丢数据。
 func (s *NotesService) ExportAll(ctx context.Context, userID uuid.UUID) ([]ExportRow, error) {
-	archived := false
-	notes, _, err := s.List(ctx, store.NoteListQuery{UserID: userID, Archived: &archived, Size: 100})
+	const pageSize = 200
+	collect := func(archived bool) ([]model.NoteWithTags, error) {
+		out := make([]model.NoteWithTags, 0)
+		for page := 1; ; page++ {
+			arc := archived
+			notes, total, err := s.List(ctx, store.NoteListQuery{
+				UserID:   userID,
+				Archived: &arc,
+				Page:     page,
+				Size:     pageSize,
+			})
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, notes...)
+			if int64(len(out)) >= total || len(notes) == 0 {
+				break
+			}
+		}
+		return out, nil
+	}
+	active, err := collect(false)
 	if err != nil {
 		return nil, err
 	}
-	archivedT := true
-	arch, _, _ := s.List(ctx, store.NoteListQuery{UserID: userID, Archived: &archivedT, Size: 100})
-	for i := range arch {
-		notes = append(notes, arch[i])
+	archived, err := collect(true)
+	if err != nil {
+		return nil, err
 	}
+	notes := append(active, archived...)
 	out := make([]ExportRow, 0, len(notes))
 	for _, n := range notes {
 		out = append(out, ExportRow{
-			ID:      n.ID.String(),
+			ID:       n.ID.String(),
 			Title:   n.Title,
 			Body:    n.Body,
 			Archived: n.Archived,

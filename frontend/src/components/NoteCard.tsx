@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Archive, Trash2, FileDown } from 'lucide-react'
+import { Archive, Trash2, FileDown, Sparkles } from 'lucide-react'
 import type { NoteItem } from '../types'
 
 type Props = {
@@ -8,6 +8,7 @@ type Props = {
   onArchive: (note: NoteItem) => void
   onExport: (id: string) => void
   onDelete: (note: NoteItem) => void
+  onAskAi: (note: NoteItem) => void
 }
 
 const actionBtn: React.CSSProperties = {
@@ -20,7 +21,7 @@ const actionBtn: React.CSSProperties = {
   padding: 4,
 }
 
-function NoteCardBase({ note, onOpen, onArchive, onExport, onDelete }: Props) {
+function NoteCardBase({ note, onOpen, onArchive, onExport, onDelete, onAskAi }: Props) {
   return (
     <article
       className="note-card"
@@ -39,7 +40,7 @@ function NoteCardBase({ note, onOpen, onArchive, onExport, onDelete }: Props) {
       <div className="note-preview">
         {note.body.slice(0, 120).replace(/[#*`>\n]/g, ' ')}
       </div>
-      {note.tags.length > 0 && (
+      {(note.tags ?? []).length > 0 && (
         <div className="note-tags">
           {note.tags.map((t) => (
             <span key={t} className="note-tag">
@@ -51,6 +52,17 @@ function NoteCardBase({ note, onOpen, onArchive, onExport, onDelete }: Props) {
       <div className="note-meta">
         <span>{new Date(note.updatedAt).toLocaleDateString()}</span>
         <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            style={actionBtn}
+            aria-label="问 AI"
+            title="问 AI"
+            onClick={(e) => {
+              e.stopPropagation()
+              onAskAi(note)
+            }}
+          >
+            <Sparkles size={13} />
+          </button>
           <button
             style={actionBtn}
             aria-label={note.archived ? '取消归档' : '归档'}

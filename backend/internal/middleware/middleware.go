@@ -10,10 +10,20 @@ import (
 	"login-system/backend/internal/authpkg"
 )
 
-func CORS() gin.HandlerFunc {
+// CORS 按白名单校验请求来源。allowed 为空或 "*" 时退化为同源策略：
+// 不回写任意 origin，避免凭据型跨站泄露。多来源以逗号分隔传入。
+func CORS(allowed string) gin.HandlerFunc {
+	allowedSet := map[string]bool{}
+	if allowed != "" && allowed != "*" {
+		for _, o := range strings.Split(allowed, ",") {
+			if t := strings.TrimSpace(o); t != "" {
+				allowedSet[t] = true
+			}
+		}
+	}
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
-		if origin != "" {
+		if origin != "" && allowedSet[origin] {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Access-Control-Allow-Credentials", "true")
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")

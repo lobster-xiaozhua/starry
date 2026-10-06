@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -72,6 +73,46 @@ func (h *AgentHandler) CreateConversation(c *gin.Context) {
 		return
 	}
 	OK(c, conv)
+}
+
+// RenameConversation PATCH /api/agent/conversations/:id
+// 更新对话标题（侧栏内联重命名、首条消息自动命名均走此端点）。
+func (h *AgentHandler) RenameConversation(c *gin.Context) {
+	uid, ok := h.userID(c)
+	if !ok {
+		Fail(c, http.StatusBadRequest, 3001, "invalid user")
+		return
+	}
+	convID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		Fail(c, http.StatusBadRequest, 3004, "invalid conversation id")
+		return
+	}
+	conv, err := h.db.GetConversation(uid, convID)
+	if err != nil {
+		Fail(c, http.StatusInternalServerError, 3002, err.Error())
+		return
+	}
+	if conv == nil {
+		Fail(c, http.StatusNotFound, 3006, "conversation not found")
+		return
+	}
+	var in struct {
+		Title string `json:"title"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.Title == "" {
+		Fail(c, http.StatusBadRequest, 3008, "invalid body: title required")
+		return
+	}
+	title := strings.TrimSpace(in.Title)
+	if len([]rune(title)) > 80 {
+		title = string([]rune(title)[:80])
+	}
+	if err := h.db.UpdateConversationTitle(uid, convID, title); err != nil {
+		Fail(c, http.StatusInternalServerError, 3003, err.Error())
+		return
+	}
+	OK(c, gin.H{"id": convID.String(), "title": title})
 }
 
 // DeleteConversation DELETE /api/agent/conversations/:id

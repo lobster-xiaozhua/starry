@@ -191,6 +191,12 @@ export default function NotesPage() {
     navigate(`/notes/${id}`)
   }, [navigate])
 
+  // 把笔记交给 AI 助手：组装总结提示词并跳转到工作模式（输入已预填）。
+  const handleAskAi = useCallback((note: NoteItem) => {
+    const prompt = `请总结并提炼以下笔记的要点，用结构化列表呈现：\n\n# ${note.title}\n\n${note.body}`
+    navigate('/agent', { state: { draft: prompt } })
+  }, [navigate])
+
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
   return (
@@ -249,6 +255,7 @@ export default function NotesPage() {
                   onArchive={handleArchive}
                   onExport={handleExportMd}
                   onDelete={handleDelete}
+                  onAskAi={handleAskAi}
                 />
               ))}
             </div>
