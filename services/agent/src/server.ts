@@ -19,6 +19,7 @@ import {
 import {
   getTaskRaw,
   listTasks,
+  cancelTask,
 } from "./backend-client.js";
 import {
   AIMessage,
@@ -262,6 +263,17 @@ app.get("/api/agent/tasks/:id", async (req, res) => {
     res.json(data);
   } catch (e: any) {
     res.status(500).json({ code: 3002, message: e?.message || "get failed" });
+  }
+});
+
+// POST /api/agent/tasks/:id/cancel — 取消任务（转发后端，使任务接口统一收敛到 agent 服务）
+app.post("/api/agent/tasks/:id/cancel", async (req, res) => {
+  const token = req.userToken!;
+  try {
+    const data = await cancelTask(token, req.params.id);
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ code: 3002, message: e?.message || "cancel failed" });
   }
 });
 

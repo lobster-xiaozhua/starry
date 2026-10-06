@@ -55,6 +55,11 @@ export default defineConfig({
         target: 'http://127.0.0.1:3001',
         changeOrigin: true,
       },
+      // 长程任务：创建/运行/进度流均在 Agent 服务，必须优先于通用 /api 规则
+      '/api/agent/tasks': {
+        target: 'http://127.0.0.1:3001',
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,

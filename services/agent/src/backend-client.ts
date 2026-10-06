@@ -157,3 +157,7 @@ export async function updateTask(
 export async function listTasks(token: string) {
   return backendFetch(`/api/agent/tasks`, token);
 }
+
+export async function cancelTask(token: string, id: string) {
+  return backendFetch(`/api/agent/tasks/${id}/cancel`, token, { method: "POST" });
+}
