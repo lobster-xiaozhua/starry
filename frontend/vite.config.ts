@@ -47,6 +47,19 @@ export default defineConfig({
       '@shared/api': path.resolve(__dirname, '../packages/shared-api/src/index.ts'),
     },
   },
+  build: {
+    // 主包曾达 1.1MB 并触发构建告警。按「变更频率」拆分为稳定的 vendor 块，
+    // 让浏览器长期缓存依赖，应用代码更新时不失效。
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'antd-vendor': ['antd'],
+          'editor-vendor': ['marked', 'dompurify'],
+        },
+      },
+    },
+  },
   server: {
     allowedHosts: ['.monkeycode-ai.online'],
     port: 5173,
