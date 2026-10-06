@@ -21,6 +21,7 @@ type Config struct {
 	CorsOrigins   string
 	AdminUsername string
 	AdminEmail    string
+	AdminPassword string
 	UploadDir     string
 }
 
@@ -46,6 +47,7 @@ func Load() *Config {
 		CorsOrigins:   envOr("CORS_ORIGINS", ""),
 		AdminUsername: envOr("ADMIN_USERNAME", "admin"),
 		AdminEmail:    envOr("ADMIN_EMAIL", "admin@example.com"),
+		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
 		UploadDir:     envOr("UPLOAD_DIR", "uploads"),
 	}
 }

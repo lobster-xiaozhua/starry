@@ -76,6 +76,27 @@ func (h *NotesHandler) List(c *gin.Context) {
 	OK(c, gin.H{"notes": notes, "total": total, "page": page, "size": size})
 }
 
+// SeedDemo POST /api/notes/seed-demo
+// 为该用户灌入示例笔记（仅在尚无笔记时执行，幂等）。便于新用户一键体验产品。
+func (h *NotesHandler) SeedDemo(c *gin.Context) {
+	uid, ok := h.userID(c)
+	if !ok {
+		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		return
+	}
+	n, err := h.svc.SeedDemo(c.Request.Context(), uid)
+	if err != nil {
+		Fail(c, http.StatusInternalServerError, 2004, err.Error())
+		return
+	}
+	if n == 0 {
+		OK(c, gin.H{"count": 0, "message": "已有笔记，未重复灌入"})
+		return
+	}
+	h.publish(c, "", "note.created")
+	OK(c, gin.H{"count": n, "message": "已为你加载示例笔记"})
+}
+
 func (h *NotesHandler) Create(c *gin.Context) {
 	uid, _ := h.userID(c)
 	var in service.CreateNoteInput

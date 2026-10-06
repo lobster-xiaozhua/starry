@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -42,7 +43,7 @@ func main() {
 		log.Fatal("redis connection failed: ", err)
 	}
 
-	seedAdmin(db, cfg.AdminUsername, cfg.AdminEmail)
+	seedAdmin(db, cfg.AdminUsername, cfg.AdminEmail, cfg.AdminPassword)
 
 	authSvc := service.NewAuthService(db, rds, cfg.JWTSecret)
 	settingsSvc := service.NewSettingsService(db, rds)
@@ -111,6 +112,7 @@ func main() {
 			notes.GET("", notesHandler.List)
 			notes.POST("", notesHandler.Create)
 			notes.GET("/tags", notesHandler.Tags)
+			notes.POST("/seed-demo", notesHandler.SeedDemo)
 			notes.POST("/upload", notesHandler.Upload)
 			notes.GET("/export/all", notesHandler.ExportAll)
 			notes.POST("/import", notesHandler.Import)
@@ -126,6 +128,7 @@ func main() {
 		{
 			agent.GET("/conversations", agentHandler.ListConversations)
 			agent.POST("/conversations", agentHandler.CreateConversation)
+			agent.POST("/conversations/seed-demo", agentHandler.SeedDemo)
 			agent.PATCH("/conversations/:id", agentHandler.RenameConversation)
 			agent.DELETE("/conversations/:id", agentHandler.DeleteConversation)
 			agent.GET("/conversations/:id/messages", agentHandler.ListMessages)
@@ -138,29 +141,59 @@ func main() {
 
 	r.Static("/uploads", cfg.UploadDir)
 
+	// 健康检查：供 docker compose / 负载均衡探活。pg 与 redis 任一不可用返回 503。
+	r.GET("/health", func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		if err := db.Ping(); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "degraded", "postgres": false, "error": err.Error()})
+			return
+		}
+		if err := rds.Ping(ctx); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "degraded", "redis": false, "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "postgres": true, "redis": true})
+	})
+
 	log.Printf("server listening on :%s", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {
 		log.Fatal("server failed: ", err)
 	}
 }
 
-func seedAdmin(db *store.DB, username, email string) {
+func seedAdmin(db *store.DB, username, email, password string) {
 	existing, err := db.FindUserByUsername(username)
 	if err != nil || existing != nil {
 		return
 	}
-	password := generateRandomPassword()
-	hash, err := authpkg.HashPassword(password)
-	if err != nil {
-		log.Fatal("admin seed failed: ", err)
+	var hash string
+	if password != "" {
+		h, herr := authpkg.HashPassword(password)
+		if herr != nil {
+			log.Fatal("admin seed failed: ", herr)
+		}
+		hash = h
+	} else {
+		password = generateRandomPassword()
+		h, herr := authpkg.HashPassword(password)
+		if herr != nil {
+			log.Fatal("admin seed failed: ", herr)
+		}
+		hash = h
 	}
 	if err := db.SeedAdmin(username, email, hash); err != nil {
 		log.Fatal("admin seed failed: ", err)
 	}
 	log.Printf("====================================================")
 	log.Printf("[SEED] 管理员账号已初始化 username=%s email=%s", username, email)
-	log.Printf("[SEED] 初始密码: %s", password)
-	log.Printf("[SEED] 请立即登录并妥善保管，此消息仅打印一次")
+	if password != "" {
+		log.Printf("[SEED] 初始密码: %s（来自 ADMIN_PASSWORD 环境变量）", password)
+		log.Printf("[SEED] 请尽快登录并修改密码")
+	} else {
+		log.Printf("[SEED] 初始密码: %s", password)
+		log.Printf("[SEED] 请立即登录并妥善保管，此消息仅打印一次")
+	}
 	log.Printf("====================================================")
 }
 

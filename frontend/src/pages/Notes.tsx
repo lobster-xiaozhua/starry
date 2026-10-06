@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { message, Modal, Input, Spin, Button } from 'antd'
-import { Plus, Search, FileDown } from 'lucide-react'
+import { Plus, Search, FileDown, Sparkles } from 'lucide-react'
 import {
   listNotes,
   createNote,
@@ -10,6 +10,7 @@ import {
   exportMarkdown,
   exportAll,
   getNote,
+  seedDemoNotes,
 } from '../api/notes'
 import { useSSE } from '../api/useSSE'
 import { NoteItem, useDebounce, SSEEvent } from '../types'
@@ -32,6 +33,7 @@ export default function NotesPage() {
   const [newTitle, setNewTitle] = useState('')
   const [showNew, setShowNew] = useState(false)
   const [tagVersion, setTagVersion] = useState(0)
+  const [seeding, setSeeding] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -199,6 +201,24 @@ export default function NotesPage() {
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
+  // 一键灌入示例笔记，便于新用户快速体验（后端幂等：已有笔记则不重复灌）
+  const handleSeedDemo = useCallback(async () => {
+    setSeeding(true)
+    try {
+      const res = await seedDemoNotes()
+      if (res.count > 0) {
+        message.success(`已加载 ${res.count} 条示例笔记`)
+        setPage(1)
+        loadRef.current()
+      } else {
+        message.info('你已有笔记，未重复灌入示例')
+      }
+    } catch {
+      message.error('加载示例失败')
+    }
+    setSeeding(false)
+  }, [])
+
   return (
     <div className="app-shell">
       <Sidebar
@@ -243,7 +263,20 @@ export default function NotesPage() {
             </div>
           ) : notes.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-secondary)' }}>
-              {q ? '未找到匹配的笔记' : '暂无笔记，点击新建'}
+              {q ? (
+                '未找到匹配的笔记'
+              ) : (
+                <>
+                  <div style={{ marginBottom: 16 }}>暂无笔记，点击新建或加载示例快速体验</div>
+                  <Button
+                    icon={<Sparkles size={14} />}
+                    loading={seeding}
+                    onClick={handleSeedDemo}
+                  >
+                    加载示例笔记
+                  </Button>
+                </>
+              )}
             </div>
           ) : (
             <div className="note-list">

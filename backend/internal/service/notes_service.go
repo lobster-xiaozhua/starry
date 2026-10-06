@@ -108,6 +108,11 @@ func (s *NotesService) List(ctx context.Context, q store.NoteListQuery) ([]model
 	return s.db.ListNotes(q)
 }
 
+// SeedDemo 为该用户灌入示例笔记（仅在尚无笔记时执行，幂等），返回创建条数。
+func (s *NotesService) SeedDemo(ctx context.Context, userID uuid.UUID) (int, error) {
+	return s.db.SeedDemoNotes(userID)
+}
+
 func (s *NotesService) Tags(ctx context.Context, userID uuid.UUID) ([]model.TagCount, error) {
 	rows, err := s.db.ListTags(userID)
 	if err != nil {

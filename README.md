@@ -48,7 +48,12 @@ docker compose up -d --build
 # 前端： http://localhost   （FRONTEND_PORT 可改）
 ```
 
-首次启动后端会自动建库迁移，并在日志中打印**管理员初始密码（仅一次）**。
+首次启动后端会自动建库迁移，并在日志中打印**管理员初始密码**：
+
+- 若在 `.env` 设置了 `ADMIN_PASSWORD`，则使用该密码；
+- 否则自动生成随机密码。用 `docker compose logs backend` 查看（仅首次建库时打印一次）。
+
+Compose 内置健康检查（后端 `/health` 探活 PostgreSQL+Redis、Agent `/health`），前端会等待后端与 Agent **健康后**再启动，避免冷启动白屏。登录后若数据为空，可在工作台点「一键加载示例」或笔记页「加载示例笔记」快速体验（后端幂等，不会重复灌入）。
 
 ### 方式二：本地源码运行
 
@@ -70,6 +75,8 @@ docker compose up -d --build
 | `DB_*` | 数据库连接（容器内用 `postgres` 服务名） | — |
 | `REDIS_*` | Redis 连接（容器内用 `redis` 服务名） | — |
 | `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | Agent 模型配置 | Agnes 默认 |
+| `ADMIN_USERNAME` / `ADMIN_EMAIL` | 初始管理员账号 | `admin` / `admin@example.com` |
+| `ADMIN_PASSWORD` | 初始管理员密码（留空则随机生成并打印日志） | 留空 |
 | `FRONTEND_PORT` | 前端容器映射端口 | `80` |
 | `UPLOAD_DIR` | 附件上传目录（建议持久卷） | `uploads` |
 
@@ -89,3 +96,6 @@ docker compose up -d --build
 - 笔记导出分页累计，修复笔记数 >100 时静默截断。
 - `Editor` Markdown 预览经 DOMPurify 消毒，消除 XSS。
 - `/` 落地为工作台仪表盘（会话状态 + 最近笔记 + 快捷入口）。
+- 一条龙开箱：后端 `/health` + Agent `/health` 健康检查，Compose 按健康顺序启动。
+- 初始管理员密码可通过 `ADMIN_PASSWORD` 指定（留空则随机打印）。
+- 空数据一键体验：工作台「一键加载示例」/ 笔记页「加载示例笔记」（幂等）。

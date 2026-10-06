@@ -280,6 +280,26 @@ func (h *AgentHandler) DeleteMessages(c *gin.Context) {
 	OK(c, gin.H{"deleted": len(ids)})
 }
 
+// SeedDemo POST /api/agent/conversations/seed-demo
+// 为该用户灌入一条示例对话（仅在尚无对话时执行，幂等）。便于新用户一键体验 AI。
+func (h *AgentHandler) SeedDemo(c *gin.Context) {
+	uid, ok := h.userID(c)
+	if !ok {
+		Fail(c, http.StatusBadRequest, 3001, "invalid user")
+		return
+	}
+	n, err := h.db.SeedDemoConversation(uid)
+	if err != nil {
+		Fail(c, http.StatusInternalServerError, 3002, err.Error())
+		return
+	}
+	if n == 0 {
+		OK(c, gin.H{"count": 0, "message": "已有对话，未重复灌入"})
+		return
+	}
+	OK(c, gin.H{"count": n, "message": "已为你加载示例对话"})
+}
+
 // RecordUsage POST /api/agent/usage
 // 累加用户本轮 LLM token 用量到 Redis。Node agent 在每轮 LLM 调用后上报。
 func (h *AgentHandler) RecordUsage(c *gin.Context) {

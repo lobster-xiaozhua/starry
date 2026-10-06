@@ -39,6 +39,14 @@ export async function renameConversation(id: string, title: string): Promise<voi
   await api.patch(`/agent/conversations/${id}`, { title })
 }
 
+// 灌入一条示例对话（仅在尚无对话时生效，幂等）
+export async function seedDemoConversation(): Promise<{ count: number; message: string }> {
+  const res = await api.post<ApiResponse<{ count: number; message: string }>>(
+    '/agent/conversations/seed-demo',
+  )
+  return res.data.data
+}
+
 export async function listMessages(conversationId: string): Promise<AgentMessage[]> {
   const res = await api.get<ApiResponse<{ messages: AgentMessage[] }>>(
     `/agent/conversations/${conversationId}/messages`,

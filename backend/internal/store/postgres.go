@@ -24,6 +24,12 @@ func NewPostgres(dsn string) (*DB, error) {
 	return &DB{gorm: db}, nil
 }
 
+// Ping 探活 PostgreSQL，供 /health 健康检查使用。
+func (s *DB) Ping() error {
+	var one int
+	return s.gorm.Raw("SELECT 1").Scan(&one).Error
+}
+
 func (s *DB) AutoMigrate() error {
 	if err := s.gorm.AutoMigrate(
 		&model.User{}, &model.AuthSettings{},

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, Progress, Tag, Button, Empty, App } from 'antd'
 import {
@@ -9,9 +9,11 @@ import {
   Timer,
   ArrowRight,
   Coins,
+  Sparkles,
 } from 'lucide-react'
 import { api, fetchMe, tokenStore, type AuthUser } from '@shared/api'
-import { listConversations, type Conversation } from '../api/agent'
+import { listConversations, seedDemoConversation, type Conversation } from '../api/agent'
+import { seedDemoNotes } from '../api/notes'
 
 interface RecentNote {
   id: string
@@ -32,6 +34,7 @@ export default function Home() {
     promptTokens: 0,
     completionTokens: 0,
   })
+  const [seeding, setSeeding] = useState(false)
 
   useEffect(() => {
     fetchMe()
@@ -60,18 +63,28 @@ export default function Home() {
     return () => clearInterval(timer)
   }, [expiresAt])
 
-  useEffect(() => {
-    api
+  const loadNotes = useCallback(() => {
+    return api
       .get('/notes?size=5&archived=false')
-      .then((res: any) => setRecent(res.data?.data?.notes ?? []))
+      .then((res: any) => {
+        setRecent(res.data?.data?.notes ?? [])
+      })
+      .catch(() => {})
+  }, [])
+
+  const loadConvs = useCallback(() => {
+    return listConversations()
+      .then((cs) => setConvs(cs.slice(0, 4)))
       .catch(() => {})
   }, [])
 
   useEffect(() => {
-    listConversations()
-      .then((cs) => setConvs(cs.slice(0, 4)))
-      .catch(() => {})
-  }, [])
+    void loadNotes()
+  }, [loadNotes])
+
+  useEffect(() => {
+    void loadConvs()
+  }, [loadConvs])
 
   useEffect(() => {
     api
@@ -83,7 +96,28 @@ export default function Home() {
       .catch(() => {})
   }, [])
 
+  // 一键灌入示例数据（笔记 + 对话），后端幂等：已有数据则不重复灌
+  const handleSeedDemo = useCallback(async () => {
+    setSeeding(true)
+    try {
+      const [noteRes, convRes] = await Promise.all([seedDemoNotes(), seedDemoConversation()])
+      const parts: string[] = []
+      if (noteRes.count > 0) parts.push(`${noteRes.count} 条笔记`)
+      if (convRes.count > 0) parts.push(`${convRes.count} 条对话`)
+      if (parts.length > 0) {
+        message.success(`已加载示例${parts.join(' 与 ')}`)
+      } else {
+        message.info('你已有数据，未重复灌入示例')
+      }
+      await Promise.all([loadNotes(), loadConvs()])
+    } catch {
+      message.error('加载示例失败')
+    }
+    setSeeding(false)
+  }, [loadNotes, loadConvs, message])
+
   const remainingMs = expiresAt !== null ? expiresAt - now : null
+
   const percent =
     remainingMs !== null && tokenTotal > 0
       ? Math.max(0, Math.min(100, (remainingMs / tokenTotal) * 100))
@@ -123,6 +157,31 @@ export default function Home() {
           Starry 工作台 · 对话、工作、笔记，一处直达
         </div>
       </div>
+
+      {/* 全新用户：空状态一键引导，避免首次进入面对空白无所适从 */}
+      {recent.length === 0 && convs.length === 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+            padding: '14px 16px',
+            marginBottom: 24,
+            borderRadius: 12,
+            border: '1px dashed var(--border)',
+            background: 'var(--surface)',
+          }}
+        >
+          <Sparkles size={18} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 220, fontSize: 13, color: 'var(--text-secondary)' }}>
+            还没有任何数据。加载一份示例笔记与对话，先体验完整功能再开始自己的整理。
+          </div>
+          <Button type="primary" size="small" icon={<Sparkles size={14} />} loading={seeding} onClick={handleSeedDemo}>
+            一键加载示例
+          </Button>
+        </div>
+      )}
 
       <div
         style={{

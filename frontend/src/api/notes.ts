@@ -55,6 +55,12 @@ export async function listTags(): Promise<TagRow[]> {
   return res.data.data
 }
 
+// 灌入示例笔记（仅在尚无笔记时生效，幂等）
+export async function seedDemoNotes(): Promise<{ count: number; message: string }> {
+  const res = await api.post<ApiResponse<{ count: number; message: string }>>('/notes/seed-demo')
+  return res.data.data
+}
+
 export async function uploadImage(
   file: File,
   noteId?: string,
