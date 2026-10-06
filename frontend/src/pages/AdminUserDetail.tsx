@@ -24,6 +24,8 @@ import {
   KeyRound,
   Unlock,
   CalendarClock,
+  UserX,
+  UserCheck,
 } from 'lucide-react'
 import { api, extractError } from '../api/client'
 
@@ -41,6 +43,7 @@ interface AdminUserDetail {
 }
 
 const ROLE_LABEL: Record<string, string> = { admin: '管理员', user: '普通用户' }
+const STATUS_LABEL: Record<string, string> = { active: '状态正常', frozen: '已冻结' }
 
 export default function AdminUserDetail() {
   const { id = '' } = useParams()
@@ -48,7 +51,7 @@ export default function AdminUserDetail() {
   const { message } = App.useApp()
   const [detail, setDetail] = useState<AdminUserDetail | null>(null)
   const [notFound, setNotFound] = useState(false)
-  const [acting, setActing] = useState<'unlock' | 'revoke' | 'reset' | null>(null)
+  const [acting, setActing] = useState<'unlock' | 'revoke' | 'reset' | 'freeze' | 'unfreeze' | null>(null)
   const [resetToken, setResetToken] = useState('')
 
   const load = () => {
@@ -63,10 +66,16 @@ export default function AdminUserDetail() {
 
   useEffect(load, [id])
 
-  const run = async (action: 'unlock' | 'revoke' | 'reset') => {
+  const run = async (action: 'unlock' | 'revoke' | 'reset' | 'freeze' | 'unfreeze') => {
     setActing(action)
     try {
-      const res = await api.post(`/admin/users/${id}/${action === 'reset' ? 'reset-password' : action === 'revoke' ? 'revoke-sessions' : 'unlock'}`)
+      const endpoint =
+        action === 'reset'
+          ? 'reset-password'
+          : action === 'revoke'
+            ? 'revoke-sessions'
+            : action
+      const res = await api.post(`/admin/users/${id}/${endpoint}`)
       if (res.data.code === 0) {
         if (action === 'reset') {
           setResetToken(res.data.data.token)
@@ -148,7 +157,11 @@ export default function AdminUserDetail() {
             <Tag color={detail.role === 'admin' ? 'gold' : 'green'}>
               {ROLE_LABEL[detail.role] ?? detail.role}
             </Tag>
-            {detail.locked ? (
+            {detail.status === 'frozen' ? (
+              <Tag color="red" icon={<UserX size={12} aria-hidden />}>
+                已冻结
+              </Tag>
+            ) : detail.locked ? (
               <Tag color="red" icon={<Lock size={12} aria-hidden />}>
                 已锁定 {lockTtlText}
               </Tag>
@@ -157,7 +170,9 @@ export default function AdminUserDetail() {
                 状态正常
               </Tag>
             )}
-            {detail.status !== 'active' && <Tag color="default">{detail.status}</Tag>}
+            {detail.status !== 'active' && detail.status !== 'frozen' && (
+              <Tag color="default">{STATUS_LABEL[detail.status] ?? detail.status}</Tag>
+            )}
           </div>
           <div style={{ color: 'var(--color-muted)', fontSize: 13, marginTop: 6 }}>{detail.email}</div>
         </div>
@@ -204,6 +219,35 @@ export default function AdminUserDetail() {
             >
               解锁账号
             </Button>
+            {detail.status === 'frozen' ? (
+              <Button
+                type="primary"
+                loading={acting === 'unfreeze'}
+                icon={<UserCheck size={15} aria-hidden />}
+                onClick={() => void run('unfreeze')}
+              >
+                解除冻结
+              </Button>
+            ) : (
+              <Button
+                danger
+                loading={acting === 'freeze'}
+                icon={<UserX size={15} aria-hidden />}
+                disabled={detail.role === 'admin'}
+                onClick={() =>
+                  Modal.confirm({
+                    title: '冻结该账号？',
+                    content: '冻结后该用户将无法登录，且全部在线会话立即失效；可随时解除冻结。',
+                    okText: '确认冻结',
+                    okButtonProps: { danger: true },
+                    cancelText: '取消',
+                    onOk: () => run('freeze'),
+                  })
+                }
+              >
+                冻结账号
+              </Button>
+            )}
             <Button
               type="primary"
               loading={acting === 'reset'}

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, Spin, message } from 'antd'
+import { tokenStore } from '@shared/api'
 
 export default function OAuthCallbackPage() {
   const [params] = useSearchParams()
@@ -15,8 +16,7 @@ export default function OAuthCallbackPage() {
     const refresh = params.get('refresh_token')
 
     if (access && refresh) {
-      localStorage.setItem('accessToken', access)
-      localStorage.setItem('refreshToken', refresh)
+      tokenStore.save(access, refresh)
       message.success('登录成功')
       navigate('/', { replace: true })
     } else {

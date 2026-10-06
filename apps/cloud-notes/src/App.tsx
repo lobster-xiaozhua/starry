@@ -6,6 +6,7 @@ import { tokenStore, onAuthChange } from '@shared/api'
 import NotesPage from './pages/Notes'
 import EditorPage from './pages/Editor'
 import LoginPage from './pages/Login'
+import RegisterPage from './pages/Register'
 import OAuthCallbackPage from './pages/OAuthCallback'
 import { ThemeProvider, useTheme } from './theme'
 import type { ReactNode } from 'react'
@@ -48,6 +49,7 @@ function Root() {
         <AuthSync />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
           <Route
             path="/"

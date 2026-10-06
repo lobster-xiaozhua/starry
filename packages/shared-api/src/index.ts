@@ -133,7 +133,9 @@ api.interceptors.response.use(
         return api(config)
       }
       tokenStore.clear()
-      window.location.href = '/login'
+      // 保留 OAuth 回调目标（如云笔记场景），避免重新登录后丢失回跳地址
+      const pendingRedirect = new URLSearchParams(window.location.search).get('redirect_uri')
+      window.location.href = pendingRedirect ? `/login?redirect_uri=${encodeURIComponent(pendingRedirect)}` : '/login'
     }
     return Promise.reject(error)
   },

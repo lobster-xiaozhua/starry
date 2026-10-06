@@ -5,7 +5,7 @@ import { ChatOpenAI } from "@langchain/openai";
 export function createModel(): ChatOpenAI {
   return new ChatOpenAI({
     modelName: process.env.LLM_MODEL || "agnes-3.0-flash",
-    openAIApiKey: process.env.LLM_API_KEY || "",
+    openAIApiKey: process.env.LLM_API_KEY || "no-key-set",
     configuration: {
       baseURL: process.env.LLM_BASE_URL || "https://apihub.agnes-ai.com/v1",
     },

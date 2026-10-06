@@ -148,3 +148,37 @@ func (h *AdminHandler) RevokeSessions(c *gin.Context) {
 	}
 	OK(c, gin.H{"message": "已吊销该用户全部在线会话"})
 }
+
+func (h *AdminHandler) FreezeUser(c *gin.Context) {
+	userID := c.Param("id")
+	if userID == c.GetString("userID") {
+		Fail(c, http.StatusBadRequest, 1009, "不能冻结当前登录的管理员账号")
+		return
+	}
+	if err := h.adminSvc.FreezeUser(c.Request.Context(), userID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			Fail(c, http.StatusNotFound, 1011, "用户不存在")
+			return
+		}
+		if errors.Is(err, service.ErrAdminUser) {
+			Fail(c, http.StatusBadRequest, 1009, "管理员账号不允许冻结")
+			return
+		}
+		Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
+		return
+	}
+	OK(c, gin.H{"message": "账号已冻结，该用户全部会话已吊销"})
+}
+
+func (h *AdminHandler) UnfreezeUser(c *gin.Context) {
+	userID := c.Param("id")
+	if err := h.adminSvc.UnfreezeUser(c.Request.Context(), userID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			Fail(c, http.StatusNotFound, 1011, "用户不存在")
+			return
+		}
+		Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
+		return
+	}
+	OK(c, gin.H{"message": "账号已解冻，可正常登录"})
+}

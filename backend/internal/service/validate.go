@@ -20,6 +20,7 @@ var (
 	ErrUserExists      = errors.New("user exists")
 	ErrWeakPassword    = errors.New("weak password")
 	ErrNotFound        = errors.New("not found")
+	ErrAdminUser       = errors.New("admin user protected")
 )
 
 func ValidatePassword(password string, s model.AuthSettings) ValidationIssues {

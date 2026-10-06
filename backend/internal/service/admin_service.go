@@ -140,4 +140,34 @@ func (s *AdminService) RevokeSessions(ctx context.Context, userID string) error 
 	return nil
 }
 
+// FreezeUser 冻结账号：status 置为 frozen，并吊销全部在线会话使其立即生效。
+func (s *AdminService) FreezeUser(ctx context.Context, userID string) error {
+	user, err := s.db.FindUserByID(userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return store.ErrNotFound
+	}
+	if user.Role == "admin" {
+		return ErrAdminUser
+	}
+	if err := s.db.UpdateUserStatus(userID, "frozen"); err != nil {
+		return err
+	}
+	return s.rds.RevokeAllUserTokens(ctx, userID, 500)
+}
+
+// UnfreezeUser 解冻账号：status 恢复为 active。
+func (s *AdminService) UnfreezeUser(ctx context.Context, userID string) error {
+	user, err := s.db.FindUserByID(userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return store.ErrNotFound
+	}
+	return s.db.UpdateUserStatus(userID, "active")
+}
+
 var _ = model.User{}

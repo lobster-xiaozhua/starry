@@ -183,3 +183,8 @@
 # Go build output
 /backend/server
 /backend/*.exe
+
+# Runtime artifacts
+/backend/uploads/
+dump.rdb
+.monkeycode/

@@ -1,6 +1,6 @@
 import { Button, Card, Form, Input, App } from 'antd'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { LogIn, KeyRound, RefreshCw } from 'lucide-react'
 import { api, extractError, tokenStore } from '../api/client'
 import { useCaptcha } from '../api/captcha'
@@ -21,6 +21,30 @@ export default function Login() {
   const [shaking, setShaking] = useState(false)
   const formRef = useRef<HTMLDivElement | null>(null)
   const captcha = useCaptcha()
+
+  // 已登录会话 + 携带 redirect_uri：校验会话有效后直接回传令牌，免重复登录
+  const autoReturnRef = useRef(false)
+  useEffect(() => {
+    if (!redirectUri || !tokenStore.access || autoReturnRef.current) return
+    autoReturnRef.current = true
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await api.get('/auth/me')
+        if (cancelled || res.data.code !== 0) return
+        const params = new URLSearchParams({
+          access_token: tokenStore.access ?? '',
+          refresh_token: tokenStore.refresh ?? '',
+        })
+        window.location.href = `${redirectUri}?${params.toString()}`
+      } catch {
+        // 会话失效：刷新令牌由 401 拦截器处理，用户重新登录后仍会跳回 redirect_uri
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [redirectUri])
 
   const triggerShake = () => {
     setShaking(false)

@@ -19,12 +19,16 @@ export interface AgentMessage {
 
 export async function listConversations(): Promise<Conversation[]> {
   const res = await api.get<ApiResponse<{ conversations: Conversation[] }>>('/agent/conversations')
-  return res.data.data.conversations
+  return res.data.data?.conversations ?? []
 }
 
 export async function createConversation(title?: string): Promise<Conversation> {
   const res = await api.post<ApiResponse<Conversation>>('/agent/conversations', { title })
-  return res.data.data
+  const conv = res.data.data
+  if (!conv?.id) {
+    throw new Error(res.data.message || '创建对话失败')
+  }
+  return conv
 }
 
 export async function deleteConversation(id: string): Promise<void> {

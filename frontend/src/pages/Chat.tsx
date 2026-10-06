@@ -152,11 +152,16 @@ export default function Chat() {
     if (!input.trim() || loading) return
     let convId = activeConv
     if (!convId) {
-      const conv = await createConversation('新对话')
-      setConversations((prev) => [conv, ...prev])
-      skipNextLoadRef.current = true
-      setActiveConv(conv.id)
-      convId = conv.id
+      try {
+        const conv = await createConversation('新对话')
+        setConversations((prev) => [conv, ...prev])
+        skipNextLoadRef.current = true
+        setActiveConv(conv.id)
+        convId = conv.id
+      } catch {
+        antdMessage.error('创建对话失败')
+        return
+      }
     }
     const userMsg = input.trim()
     setInput('')

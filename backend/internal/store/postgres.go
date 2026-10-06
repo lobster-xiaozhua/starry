@@ -120,6 +120,11 @@ func (s *DB) UpdateUserPassword(id, passwordHash string) error {
 		Updates(map[string]interface{}{"password_hash": passwordHash, "updated_at": time.Now()}).Error
 }
 
+func (s *DB) UpdateUserStatus(id, status string) error {
+	return s.gorm.Model(&model.User{}).Where("id = ?", id).
+		Updates(map[string]interface{}{"status": status, "updated_at": time.Now()}).Error
+}
+
 func (s *DB) ListUsers(search string) ([]model.User, error) {
 	var users []model.User
 	q := s.gorm.Order("created_at DESC").Limit(200)

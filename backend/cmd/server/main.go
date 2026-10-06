@@ -101,6 +101,8 @@ func main() {
 			admin.GET("/users", adminHandler.ListUsers)
 			admin.GET("/users/:id", adminHandler.GetUser)
 			admin.POST("/users/:id/unlock", adminHandler.UnlockUser)
+			admin.POST("/users/:id/freeze", adminHandler.FreezeUser)
+			admin.POST("/users/:id/unfreeze", adminHandler.UnfreezeUser)
 			admin.POST("/users/:id/reset-password", adminHandler.ForceResetPassword)
 			admin.POST("/users/:id/revoke-sessions", adminHandler.RevokeSessions)
 		}
