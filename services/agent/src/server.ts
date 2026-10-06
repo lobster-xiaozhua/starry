@@ -3,13 +3,22 @@ import express from "express";
 import cors from "cors";
 import { authMiddleware } from "./jwt.js";
 import { requestContext } from "./context.js";
-import { agentExecutor, dailyExecutor } from "./agent.js";
+import { supervisorExecutor, dailyExecutor } from "./agents.js";
 import { createModel } from "./llm.js";
+import { embedTexts } from "./embed.js";
 import { maybeSummarize, extractUsage } from "./history.js";
 import {
   listMessages,
   saveMessage,
   recordUsage,
+} from "./backend-client.js";
+import {
+  createAndRunLongTask,
+  subscribeTask,
+} from "./tasks.js";
+import {
+  getTaskRaw,
+  listTasks,
 } from "./backend-client.js";
 import {
   AIMessage,
@@ -24,6 +33,28 @@ app.use(express.json({ limit: "1mb" }));
 
 const JWT_SECRET = process.env.JWT_SECRET || "notes-test-secret-fixed";
 const PORT = parseInt(process.env.PORT || "3001", 10);
+
+// 内部向量化端点：供 Go 后端在知识库入库/检索时调用。用 X-Internal-Token 保护，
+// 仅允许受信任的内部服务访问（未配置 AGENT_INTERNAL_TOKEN 时视为开发环境放行）。
+const INTERNAL_TOKEN = process.env.AGENT_INTERNAL_TOKEN || "";
+app.post("/api/agent/embed", async (req, res) => {
+  if (INTERNAL_TOKEN && req.header("X-Internal-Token") !== INTERNAL_TOKEN) {
+    res.status(401).json({ code: 1005, message: "internal token required" });
+    return;
+  }
+  const texts = (req.body?.texts as string[]) || [];
+  if (!Array.isArray(texts) || texts.length === 0) {
+    res.status(400).json({ code: 3001, message: "texts required" });
+    return;
+  }
+  try {
+    const embeddings = await embedTexts(texts.slice(0, 64));
+    res.json({ embeddings });
+  } catch (e: any) {
+    console.error("[agent] embed failed:", e);
+    res.status(500).json({ code: 3002, message: e?.message || "embed failed" });
+  }
+});
 
 app.use("/api/agent", authMiddleware(JWT_SECRET));
 
@@ -89,7 +120,7 @@ app.post("/api/agent/chat", async (req, res) => {
     const newMessages: BaseMessage[] = [new HumanMessage(message)];
 
     await requestContext.run({ token, userId, role: req.userRole! }, async () => {
-      const executor = isDaily ? dailyExecutor : agentExecutor;
+      const executor = isDaily ? dailyExecutor : supervisorExecutor;
       const eventStream = executor.streamEvents(
         { messages: [...historyBase, ...newMessages] },
         { version: "v2" },
@@ -192,6 +223,74 @@ app.post("/api/agent/chat", async (req, res) => {
   } finally {
     res.end();
   }
+});
+
+// ===== 长程任务 =====
+
+// POST /api/agent/tasks — 创建并异步执行，立即返回任务 ID
+app.post("/api/agent/tasks", async (req, res) => {
+  const token = req.userToken!;
+  const goal = (req.body?.goal as string) || "";
+  if (!goal.trim()) {
+    res.status(400).json({ code: 3001, message: "goal required" });
+    return;
+  }
+  try {
+    const id = await createAndRunLongTask(goal, token);
+    res.json({ id });
+  } catch (e: any) {
+    res.status(500).json({ code: 3002, message: e?.message || "task failed" });
+  }
+});
+
+// GET /api/agent/tasks — 任务列表
+app.get("/api/agent/tasks", async (req, res) => {
+  const token = req.userToken!;
+  try {
+    const data = await listTasks(token);
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ code: 3002, message: e?.message || "list failed" });
+  }
+});
+
+// GET /api/agent/tasks/:id — 任务详情
+app.get("/api/agent/tasks/:id", async (req, res) => {
+  const token = req.userToken!;
+  try {
+    const data = await getTaskRaw(token, req.params.id);
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ code: 3002, message: e?.message || "get failed" });
+  }
+});
+
+// GET /api/agent/tasks/:id/stream — SSE 实时进度流
+app.get("/api/agent/tasks/:id/stream", async (req, res) => {
+  const token = req.userToken!;
+  const id = req.params.id;
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders?.();
+  const send = (event: string, data: unknown) => {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+  // 先推送当前任务状态快照
+  try {
+    const t = await getTaskRaw(token, id);
+    send("status", t);
+  } catch {
+    /* ignore */
+  }
+  const unsub = subscribeTask(id, (ev) => send(ev.type, ev));
+  const ping = setInterval(() => res.write(": ping\n\n"), 15000);
+  req.on("close", () => {
+    clearInterval(ping);
+    unsub();
+  });
 });
 
 function textContent(content: unknown): string {

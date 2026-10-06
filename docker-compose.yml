@@ -6,7 +6,8 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # 使用带 pgvector 扩展的 Postgres 镜像，知识库向量检索（<= 算子）依赖该扩展。
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ${DB_USER:-login_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-login_pass_2026}
@@ -24,6 +25,11 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   backend:
     build:
@@ -44,11 +50,13 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       UPLOAD_DIR: /data/uploads
+      AGENT_URL: http://agent:3001
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-starry-internal}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - uploads:/data/uploads
     expose:
@@ -69,11 +77,18 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       BACKEND_URL: http://backend:8080
       AGENT_CORS_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost}
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-starry-internal}
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: "0"
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://apihub.agnes-ai.com/v1}
       LLM_MODEL: ${LLM_MODEL:-agnes-3.0-flash}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     expose:
       - "3001"
     healthcheck:

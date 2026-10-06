@@ -339,3 +339,140 @@ func (h *AgentHandler) GetUsage(c *gin.Context) {
 	}
 	OK(c, gin.H{"promptTokens": prompt, "completionTokens": completion})
 }
+
+// ===== 长程任务（AgentTask）=====
+// 任务由 agent 服务创建并异步执行，后端只负责持久化与状态查询。
+// 用户通过 agent 服务的 SSE 端点实时跟踪进度；此处提供 CRUD 与取消。
+
+// CreateTask POST /api/agent/tasks
+func (h *AgentHandler) CreateTask(c *gin.Context) {
+	uid, ok := h.userID(c)
+	if !ok {
+		Fail(c, http.StatusBadRequest, 3001, "invalid user")
+		return
+	}
+	var in struct {
+		Goal string `json:"goal" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || strings.TrimSpace(in.Goal) == "" {
+		Fail(c, http.StatusBadRequest, 3008, "invalid body: goal required")
+		return
+	}
+	task := &model.AgentTask{
+		ID:        uuid.New(),
+		UserID:    uid,
+		Goal:      strings.TrimSpace(in.Goal),
+		Status:    "queued",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := h.db.CreateTask(task); err != nil {
+		Fail(c, http.StatusInternalServerError, 3002, err.Error())
+		return
+	}
+	OK(c, task)
+}
+
+// ListTasks GET /api/agent/tasks
+func (h *AgentHandler) ListTasks(c *gin.Context) {
+	uid, ok := h.userID(c)
+	if !ok {
+		Fail(c, http.StatusBadRequest, 3001, "invalid user")
+		return
+	}
+	tasks, err := h.db.ListTasks(uid, 20)
+	if err != nil {
+		Fail(c, http.StatusInternalServerError, 3002, err.Error())
+		return
+	}
+	OK(c, gin.H{"tasks": tasks})
+}
+
+// GetTask GET /api/agent/tasks/:id
+func (h *AgentHandler) GetTask(c *gin.Context) {
+	uid, ok := h.userID(c)
+	if !ok {
+		Fail(c, http.StatusBadRequest, 3001, "invalid user")
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		Fail(c, http.StatusBadRequest, 3004, "invalid task id")
+		return
+	}
+	task, err := h.db.GetTask(uid, id)
+	if err != nil {
+		Fail(c, http.StatusInternalServerError, 3002, err.Error())
+		return
+	}
+	if task == nil {
+		Fail(c, http.StatusNotFound, 3006, "task not found")
+		return
+	}
+	OK(c, task)
+}
+
+// UpdateTask PATCH /api/agent/tasks/:id
+// 由 agent 服务在逐步执行过程中调用，回写 status/plan/progress/result/error。
+func (h *AgentHandler) UpdateTask(c *gin.Context) {
+	uid, ok := h.userID(c)
+	if !ok {
+		Fail(c, http.StatusBadRequest, 3001, "invalid user")
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		Fail(c, http.StatusBadRequest, 3004, "invalid task id")
+		return
+	}
+	var in struct {
+		Status   string `json:"status"`
+		Plan     string `json:"plan"`
+		Progress int    `json:"progress"`
+		Result   string `json:"result"`
+		Error    string `json:"error"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		Fail(c, http.StatusBadRequest, 3008, "invalid body: "+err.Error())
+		return
+	}
+	fields := map[string]interface{}{}
+	if in.Status != "" {
+		fields["status"] = in.Status
+	}
+	if in.Plan != "" {
+		fields["plan"] = in.Plan
+	}
+	if in.Result != "" {
+		fields["result"] = in.Result
+	}
+	if in.Error != "" {
+		fields["error"] = in.Error
+	}
+	fields["progress"] = in.Progress
+	if err := h.db.UpdateTaskFields(uid, id, fields); err != nil {
+		Fail(c, http.StatusInternalServerError, 3002, err.Error())
+		return
+	}
+	OK(c, gin.H{"id": id.String()})
+}
+
+// CancelTask POST /api/agent/tasks/:id/cancel
+// 标记任务为 canceled；agent 执行器会在步骤间隙检查此状态并停止。
+func (h *AgentHandler) CancelTask(c *gin.Context) {
+	uid, ok := h.userID(c)
+	if !ok {
+		Fail(c, http.StatusBadRequest, 3001, "invalid user")
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		Fail(c, http.StatusBadRequest, 3004, "invalid task id")
+		return
+	}
+	if err := h.db.UpdateTaskFields(uid, id, map[string]interface{}{"status": "canceled"}); err != nil {
+		Fail(c, http.StatusInternalServerError, 3002, err.Error())
+		return
+	}
+	OK(c, gin.H{"id": id.String(), "status": "canceled"})
+}

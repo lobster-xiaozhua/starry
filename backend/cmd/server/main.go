@@ -69,6 +69,7 @@ func main() {
 	authHandler := handler.NewAuthHandler(authSvc, settingsSvc, captchaGen)
 	adminHandler := handler.NewAdminHandler(settingsSvc, adminSvc)
 	agentHandler := handler.NewAgentHandler(db, rds)
+	knowledgeHandler := handler.NewKnowledgeHandler(db, cfg)
 
 	notesSvc := service.NewNotesService(db)
 	mediaStore := store.NewFileStore(cfg.UploadDir)
@@ -107,6 +108,14 @@ func main() {
 			admin.POST("/users/:id/reset-password", adminHandler.ForceResetPassword)
 			admin.POST("/users/:id/revoke-sessions", adminHandler.RevokeSessions)
 		}
+		knowledge := api.Group("/knowledge", middleware.JWTAuth(cfg.JWTSecret), middleware.RequireNotes())
+		{
+			knowledge.POST("/ingest", knowledgeHandler.Ingest)
+			knowledge.GET("/search", knowledgeHandler.Search)
+			knowledge.GET("/docs", knowledgeHandler.List)
+			knowledge.DELETE("/docs/:id", knowledgeHandler.Delete)
+		}
+
 		notes := api.Group("/notes", middleware.JWTAuth(cfg.JWTSecret), middleware.RequireNotes())
 		{
 			notes.GET("", notesHandler.List)
@@ -136,6 +145,11 @@ func main() {
 			agent.POST("/conversations/:id/messages/delete", agentHandler.DeleteMessages)
 			agent.POST("/usage", agentHandler.RecordUsage)
 			agent.GET("/usage", agentHandler.GetUsage)
+			agent.POST("/tasks", agentHandler.CreateTask)
+			agent.GET("/tasks", agentHandler.ListTasks)
+			agent.GET("/tasks/:id", agentHandler.GetTask)
+			agent.PATCH("/tasks/:id", agentHandler.UpdateTask)
+			agent.POST("/tasks/:id/cancel", agentHandler.CancelTask)
 		}
 	}
 

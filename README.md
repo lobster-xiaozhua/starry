@@ -4,7 +4,9 @@
 
 - **用户系统**：注册、登录、验证码、刷新令牌、找回密码、管理员后台（冻结/解冻/解锁/强制改密/吊销会话）。
 - **AI 对话（日常）**：轻量纯问答，基于流式 LLM。
-- **Agent 工作模式**：LangGraph 编排 + 笔记工具，面向任务执行。
+- **Agent 工作模式（多 Agent 团队）**：`supervisor` 主调度按需委派给 `researcher`/`writer`/`coder`/`analyst` 四个子 agent，支持 agent 之间消息互联、长程多步任务。
+- **企业知识库 RAG**：上传文档向量化入库（本地免费模型），`knowledge_search` 工具检索私有资料。
+- **免费网络搜索**：`web_search` 直连 DuckDuckGo，无需任何密钥。
 - **云笔记**：Markdown 笔记、标签、搜索、归档、导入导出、SSE 实时同步、PWA 离线外壳。
 
 > 单前端项目结构：所有界面（对话 / 工作 / 笔记 / 管理）统一在 `frontend/` 中，通过左侧导航切换；后端四组 API（`auth` / `admin` / `notes` / `agent`）同时服务它们。
@@ -22,9 +24,14 @@
                                                ▲                │
 ┌─────────────────────┐   /api/agent/chat     │                │
 │ agent :3001 (Node)  │ ◀──── SSE 流式 ────────┘                │
-│ LangGraph + 笔记工具 │── 对话持久化(BACKEND_URL) ──────────────┘
-└─────────────────────┘
+│ LangGraph 多Agent   │── 对话持久化(BACKEND_URL) ──────────────┘
+│ + 工具集 + 知识库   │── 向量化(本地模型) / 检索(pgvector) ────┐
+│ + Redis 消息总线    │                                        │
+└─────────────────────┘                                        │
+                                             知识库向量 ◀────────┘ (Postgres pgvector)
 ```
+
+> Agent 服务在「工作模式」下使用 **supervisor + 子 agent** 编排：主调度理解目标并委派给研究员/写作/编程/分析子 agent，工具涵盖笔记、免费网络搜索、计算器、知识库检索与 agent 互联；长程任务会拆步执行并实时回写检查点。
 
 本地开发时，Vite 代理（`frontend/vite.config.ts`）把 `/api` → 后端 `8080`、`/api/agent/chat` → Agent `3001`。
 
@@ -77,17 +84,49 @@ Compose 内置健康检查（后端 `/health` 探活 PostgreSQL+Redis、Agent `/
 | `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | Agent 模型配置 | Agnes 默认 |
 | `ADMIN_USERNAME` / `ADMIN_EMAIL` | 初始管理员账号 | `admin` / `admin@example.com` |
 | `ADMIN_PASSWORD` | 初始管理员密码（留空则随机生成并打印日志） | 留空 |
+| `AGENT_INTERNAL_TOKEN` | 后端↔Agent 内部调用共享令牌（知识库向量化等内部端点鉴权） | `starry-internal` |
 | `FRONTEND_PORT` | 前端容器映射端口 | `80` |
 | `UPLOAD_DIR` | 附件上传目录（建议持久卷） | `uploads` |
 
 > 安全提示：后端 CORS 已改为**白名单**模式（非白名单来源不再回写 `Access-Control-Allow-Origin`）；`JWT_SECRET` 缺失时启动会生成随机密钥并告警，生产务必显式注入稳定密钥。
 
+## AI Agent 平台（v2）
+
+Starry 的 Agent 已从「单一笔记工具助手」升级为**多 Agent 协作平台**：
+
+- **主调度 supervisor**：理解用户目标，拆解为子任务，通过 `delegate_to_<角色>` 工具委派给子 agent，并综合结果。
+- **四个常用子 agent**（均可在 `services/agent/src/config/agents.config.ts` 自由增删）：
+  - `researcher` 研究员：联网调研（web_search / web_fetch）+ 知识库检索。
+  - `writer` 写作助手：起草/总结，并沉淀到云笔记（create_note）。
+  - `coder` 编程助手：技术方案、代码片段、文档查阅。
+  - `analyst` 分析师：数据归纳与量化分析（calculator）。
+- **工具集**：笔记工具、免费 `web_search`（DuckDuckGo，零密钥）、`web_fetch`、`calculator`、`current_time`、`knowledge_search`、agent 互联（`message_agent` / `read_messages`）。
+- **Agent 消息互联**：基于 Redis 信箱 + 发布订阅，agent 之间可异步投递与收取消息。
+- **长程任务**：`POST /api/agent/tasks` 提交高层目标，Agent 自动拆步、逐步执行、每步检查点回写后端（`agent_tasks` 表），并通过 `GET /api/agent/tasks/:id/stream` 以 SSE 实时推送进度，支持取消与步数上限（默认 12 步）。
+- **企业知识库 RAG（B 方案）**：`POST /api/knowledge/ingest` 上传文本，Agent 服务用**本地免费模型**（Xenova/all-MiniLM-L6-v2，约 25MB，首次自动下载）向量化，存入 Postgres `pgvector`；`GET /api/knowledge/search` 做余弦相似检索，供 `knowledge_search` 工具使用。
+
+### 开箱使用示例配置
+
+子 agent 团队与工具白名单即「开箱可用示例」，位于 `services/agent/src/config/agents.config.ts`。
+修改该文件即可增删子 agent、调整 system prompt 与工具集，**无需改动编排代码**。重启 Agent 服务生效。
+
+### 关键端点
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/knowledge/ingest` | 知识库入库（文本 → 向量） |
+| GET | `/api/knowledge/search?q=` | 知识库相似检索 |
+| GET | `/api/knowledge/docs` | 文档列表 |
+| POST | `/api/agent/tasks` | 创建并运行长程任务 |
+| GET | `/api/agent/tasks/:id/stream` | 任务进度 SSE |
+| POST | `/api/agent/embed` | 内部向量化（需 `X-Internal-Token`） |
+
 ## 部署要点
 
-- **持久化**：`pgdata` / `redisdata` / `uploads` 均为命名卷，升级镜像数据不丢。
+- **持久化**：`pgdata` / `redisdata` / `uploads` 均为命名卷，升级镜像数据不丢。Postgres 使用 `pgvector/pgvector` 镜像以支持知识库向量检索。
 - **HTTPS**：正式环境在 nginx 前加反向代理/证书（如 Caddy、Traefik），并相应设置 `PUBLIC_ORIGIN` 为 `https://域名`。
-- **密钥**：不要把真实 `.env` 提交进仓库；`.env` 已在 `.gitignore` 中。
-- **Agent 运行环境**：当前 Agent 为「LLM + 笔记工具」编排，代码执行沙箱为规划项，未默认开启。
+- **密钥**：不要把真实 `.env` 提交进仓库；`.env` 已在 `.gitignore` 中。生产请为 `JWT_SECRET` 与 `AGENT_INTERNAL_TOKEN` 设置强随机值。
+- **Agent 运行环境**：Agent 平台已实现多 agent 协作、长程任务与知识库 RAG。代码执行沙箱（直接运行用户代码）为独立安全项，默认未开启——如需「运行环境」能力，建议接入 gVisor/函数计算等隔离方案。
 
 ## 近期质量改进
 

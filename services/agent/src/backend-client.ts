@@ -3,7 +3,7 @@
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8080";
 
-async function backendFetch(
+export async function backendFetch(
   path: string,
   token: string,
   init?: RequestInit,
@@ -128,4 +128,32 @@ export async function recordUsage(
   }).catch((e) => {
     console.warn("[agent] recordUsage failed:", e);
   });
+}
+
+// ===== 长程任务持久化（后端 agent_tasks 表）=====
+
+export async function createTask(token: string, goal: string) {
+  return backendFetch(`/api/agent/tasks`, token, {
+    method: "POST",
+    body: JSON.stringify({ goal }),
+  });
+}
+
+export async function getTaskRaw(token: string, id: string) {
+  return backendFetch(`/api/agent/tasks/${id}`, token);
+}
+
+export async function updateTask(
+  token: string,
+  id: string,
+  fields: { status?: string; plan?: string; progress?: number; result?: string; error?: string },
+) {
+  return backendFetch(`/api/agent/tasks/${id}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(fields),
+  });
+}
+
+export async function listTasks(token: string) {
+  return backendFetch(`/api/agent/tasks`, token);
 }

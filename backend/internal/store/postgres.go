@@ -36,12 +36,15 @@ func (s *DB) AutoMigrate() error {
 		&model.Note{}, &model.Tag{}, &model.NoteTag{},
 		&model.NoteStableID{}, &model.Attachment{},
 		&model.Conversation{}, &model.Message{},
+		&model.KnowledgeDoc{}, &model.KnowledgeChunk{},
+		&model.AgentTask{},
 	); err != nil {
 		return err
 	}
 	for _, stmt := range []string{
 		"CREATE EXTENSION IF NOT EXISTS pg_trgm",
 		"CREATE EXTENSION IF NOT EXISTS pgcrypto",
+		"CREATE EXTENSION IF NOT EXISTS vector",
 		"ALTER TABLE notes ADD COLUMN IF NOT EXISTS fts tsvector GENERATED ALWAYS AS " +
 			"(setweight(to_tsvector('simple', coalesce(title, '')), 'A') || " +
 			"setweight(to_tsvector('simple', coalesce(body, '')), 'B')) STORED",

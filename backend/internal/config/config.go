@@ -23,6 +23,8 @@ type Config struct {
 	AdminEmail    string
 	AdminPassword string
 	UploadDir     string
+	AgentURL      string
+	AgentToken    string
 }
 
 func Load() *Config {
@@ -49,6 +51,8 @@ func Load() *Config {
 		AdminEmail:    envOr("ADMIN_EMAIL", "admin@example.com"),
 		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
 		UploadDir:     envOr("UPLOAD_DIR", "uploads"),
+		AgentURL:      envOr("AGENT_URL", "http://agent:3001"),
+		AgentToken:    os.Getenv("AGENT_INTERNAL_TOKEN"),
 	}
 }
 
