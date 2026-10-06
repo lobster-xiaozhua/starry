@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Layout, Menu, Avatar, Button, App } from 'antd'
-import { MessageSquare, Bot, NotebookPen, Shield, Sun, Moon, LogOut } from 'lucide-react'
+import { MessageSquare, Bot, NotebookPen, Shield, Sun, Moon, LogOut, Database } from 'lucide-react'
 import { fetchMe, tokenStore, api, type AuthUser } from '@shared/api'
 import { useTheme } from '../theme'
 
@@ -35,6 +35,7 @@ export default function AppShell() {
   const selectedKey = (() => {
     const p = location.pathname
     if (p.startsWith('/notes')) return '/notes'
+    if (p.startsWith('/knowledge')) return '/knowledge'
     if (p.startsWith('/agent')) return '/agent'
     if (p.startsWith('/admin')) return '/admin'
     return '/chat'
@@ -44,6 +45,7 @@ export default function AppShell() {
     { key: '/chat', icon: <MessageSquare size={18} />, label: '对话' },
     { key: '/agent', icon: <Bot size={18} />, label: '工作' },
     { key: '/notes', icon: <NotebookPen size={18} />, label: '笔记' },
+    { key: '/knowledge', icon: <Database size={18} />, label: '知识库' },
     ...(user?.role === 'admin'
       ? [{ key: '/admin', icon: <Shield size={18} />, label: '管理' }]
       : []),

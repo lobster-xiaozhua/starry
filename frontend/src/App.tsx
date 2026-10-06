@@ -12,6 +12,7 @@ import AdminSettings from './pages/AdminSettings'
 import AdminUserDetail from './pages/AdminUserDetail'
 import NotesPage from './pages/Notes'
 import EditorPage from './pages/Editor'
+import KnowledgePage from './pages/Knowledge'
 import AppShell from './components/AppShell'
 import { ThemeProvider, useTheme } from './theme'
 import './styles.css'
@@ -75,6 +76,7 @@ function AppRoot() {
               <Route path="agent" element={<Chat />} />
               <Route path="notes" element={<NotesPage />} />
               <Route path="notes/:id" element={<EditorPage />} />
+              <Route path="knowledge" element={<KnowledgePage />} />
               <Route
                 path="admin"
                 element={
