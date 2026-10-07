@@ -19,6 +19,15 @@ This is a small full-stack workspace:
 - **Request tracing**: `middleware.RequestID()` must run first in the chain; access logs (`middleware.RequestLogger`) carry `request_id`, status, latency and a redacted path. Any new query parameter that carries a credential must be added to `sanitizePath`.
 - **Rate limiting**: endpoints that can be abused anonymously take `d.Limiter.Limit("<scope>", max, window)` from `core.Deps`. Do not call `middleware.RateLimit` in a module — its in-memory counter silently multiplies the quota by the replica count. The limiter fails open when the counter is unavailable, so brute-force defense still depends on the login lockout counters.
 
+## Outbound HTTP
+
+Every request this system makes to *another* service must go through one shared, hardened client — never an ad-hoc `http.Client` or bare `fetch`:
+
+- **Go backend**: the only outbound call today is `internal/modules/knowledge/embed_client.go` (`embedClient`). It owns a pooled `http.Transport` built once at startup, binds every request to the caller's context, splits oversized payloads into batches, retries only retryable failures (network errors, 429, 5xx) with backoff, and validates the response contract (vector count must equal input count). New outbound calls must follow the same shape.
+- **Node services**: all external requests go through `services/agent/src/http.ts`. Use `fetchGuarded()` for **any URL that is not a hardcoded internal endpoint** — especially URLs produced by the LLM — because it enforces SSRF protection (blocks private/link-local/metadata addresses, pre-resolves DNS, re-validates every redirect hop) plus a hard timeout and a streaming body size cap. Use `fetchWithTimeout()` for calls to our own backend defined by config.
+
+The rule of thumb: a request whose target comes from user or model input is untrusted, and must not be able to reach `169.254.169.254`, RFC1918 space, or loopback.
+
 ## Build, Test, and Development Commands
 
 Run `npm install` at the repository root to install workspace dependencies. Use `./start.sh` for the integrated local environment; it starts PostgreSQL and Redis, builds the Go server, and launches both Vite apps. For focused work, run `npm run dev` in `frontend/` or `apps/cloud-notes/`, and use `go run ./cmd/server` from `backend/`.

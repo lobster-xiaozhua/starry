@@ -1,17 +1,35 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
+import { fetchGuarded, HttpError } from "../http.js";
+
+const UA = "Mozilla/5.0 (compatible; StarryBot/1.0)";
+
+// 把护栏抛出的错误翻译成「给 LLM 看的、可据此换策略」的提示。
+function describeFailure(e: unknown, action: string): string {
+  if (e instanceof HttpError) {
+    switch (e.kind) {
+      case "blocked":
+        return `${action}被拒绝：目标地址不在允许范围内（禁止访问内网/元数据地址）。`;
+      case "timeout":
+        return `${action}超时：目标站点响应过慢，可换个来源或改用知识库/笔记工具。`;
+      case "too-large":
+        return `${action}失败：页面过大，已超过安全上限。`;
+      default:
+        return `${action}失败：${e.message}`;
+    }
+  }
+  return `${action}失败：${(e as any)?.message || e}`;
+}
+
 // 免费网络搜索：直连 DuckDuckGo HTML 端点并解析结果，无需任何 API Key。
 // 若 DDG 不可达（网络受限/被限流），返回明确提示而非崩溃，由 agent 自行兜底。
 export const webSearchTool = tool(
   async ({ query, maxResults }) => {
     const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     try {
-      const res = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; StarryBot/1.0)" },
-      });
-      const html = await res.text();
-      const results = parseDuckDuckGo(html);
+      const res = await fetchGuarded(url, { headers: { "User-Agent": UA } });
+      const results = parseDuckDuckGo(res.text);
       if (results.length === 0) {
         return "未从搜索引擎获取到结果（可能网络受限或被限流）。可尝试换一种表述，或使用知识库/笔记工具。";
       }
@@ -22,8 +40,8 @@ export const webSearchTool = tool(
             `[${i + 1}] ${r.title}\n链接: ${r.link}\n摘要: ${r.snippet}`,
         )
         .join("\n\n");
-    } catch (e: any) {
-      return `网络搜索失败：${e?.message || e}。请检查运行环境网络，或改用知识库/笔记工具。`;
+    } catch (e) {
+      return describeFailure(e, "网络搜索");
     }
   },
   {
@@ -38,19 +56,18 @@ export const webSearchTool = tool(
 );
 
 // 抓取网页正文：去掉 HTML 标签，保留可读文本并截断，供 agent 精读。
+//
+// 这是唯一一个「URL 完全由 LLM 决定」的出口，因此必须走 fetchGuarded：
+// 否则一句提示注入就能让 Agent 去读 http://169.254.169.254 上的云元数据。
 export const webFetchTool = tool(
   async ({ url, maxChars }) => {
     try {
-      const res = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; StarryBot/1.0)" },
-        redirect: "follow",
-      });
-      const html = await res.text();
-      const text = stripHtml(html);
+      const res = await fetchGuarded(url, { headers: { "User-Agent": UA } });
+      const text = stripHtml(res.text);
       const limit = maxChars && maxChars > 0 ? maxChars : 4000;
       return text.length > limit ? text.slice(0, limit) + "\n…(已截断)" : text;
-    } catch (e: any) {
-      return `抓取失败：${e?.message || e}`;
+    } catch (e) {
+      return describeFailure(e, "抓取");
     }
   },
   {

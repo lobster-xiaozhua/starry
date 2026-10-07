@@ -130,6 +130,7 @@ Starry 的 Agent 已从「单一笔记工具助手」升级为**多 Agent 协作
 - **HTTPS**：正式环境在 nginx 前加反向代理/证书（如 Caddy、Traefik），并相应设置 `PUBLIC_ORIGIN` 为 `https://域名`。
 - **密钥**：不要把真实 `.env` 提交进仓库；`.env` 已在 `.gitignore` 中。生产请为 `JWT_SECRET` 与 `AGENT_INTERNAL_TOKEN` 设置强随机值。
 - **Agent 运行环境**：Agent 平台已实现多 agent 协作、长程任务与知识库 RAG。代码执行沙箱（直接运行用户代码）为独立安全项，默认未开启——如需「运行环境」能力，建议接入 gVisor/函数计算等隔离方案。
+- **出网收敛**：所有对外请求只走一处受管控的出口（Go：`embed_client.go`；Node：`services/agent/src/http.ts`），统一带超时、体积上限与重试策略。URL 来自 LLM 或用户时（`web_fetch`）额外启用 SSRF 防护：拦截内网/链路本地/云元数据地址，DNS 预解析校验，重定向逐跳复检。
 
 ## 备份与恢复
 
@@ -179,3 +180,4 @@ ADMIN_PASSWORD=<你的密码> npm run smoke
 - 统一结构化日志（`slog`，生产输出 JSON）与全链路 `X-Request-ID`；访问日志对 query 中的 token/password 等凭据脱敏。
 - 限流计数下沉到 Redis，多副本部署时额度不再随实例数放大；计数不可用时限流 fail-open，由登录失败锁定兜底。
 - 两个 Node 服务纳入类型检查与 `node --test` 单元测试；新增 `scripts/smoke.sh` 端到端冒烟。
+- 出网 HTTP 韧性：Go 侧知识库向量化改为共享连接池 + 分批 + 有界重试 + 返回条数契约校验（不再每次请求建池）；Node 侧新增统一出口 `http.ts`，为 `web_fetch` 这类「URL 由 LLM 决定」的调用补上 SSRF 防护、超时与响应体上限。

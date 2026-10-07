@@ -12,6 +12,7 @@
   },
   "scripts": {
     "check:modules": "bash backend/scripts/check-module-isolation.sh",
+    "check:json": "node scripts/check-json.js",
     "check:compose": "docker compose config -q",
     "typecheck:services": "npm run typecheck --workspaces --if-present",
     "test:services": "npm test --workspaces --if-present",

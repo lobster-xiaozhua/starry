@@ -11,7 +11,10 @@ WORKDIR /build
 RUN apk add --no-cache vips-dev libc6-compat build-base python3
 COPY package.json ./package.json
 # 移除所有 services/* workspace 声明，避免 npm 解析其（含 transformers 等庞大）依赖。
-RUN sed -i '/"services\//d' package.json
+#
+# 这里必须用 Node 改写 JSON 而不是 sed：sed 只是删掉整行，会在数组里留下尾随逗号，
+# 产出非法 JSON（曾导致 `npm install` 报 EJSONPARSE）。
+RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.workspaces=(p.workspaces||[]).filter(w=>!w.startsWith('services/'));fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
 COPY packages/shared-api ./packages/shared-api
 COPY frontend ./frontend
 RUN npm install --no-audit --no-fund

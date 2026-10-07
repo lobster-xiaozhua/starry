@@ -1,9 +1,7 @@
 package knowledge
 
 import (
-	"bytes"
-	"encoding/json"
-	"io"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -20,13 +18,20 @@ import (
 
 // Handler 提供企业知识库（RAG）的文档入库、检索、列举与删除。
 // 向量化由独立的 embed 服务完成（本地免费模型），本 handler 负责存储与检索。
+//
+// embedder 是长生命周期的共享客户端（连接池 + 重试 + 分批），在 Register 时构造一次。
 type Handler struct {
-	db  *store.DB
-	cfg *config.Config
+	db       *store.DB
+	cfg      *config.Config
+	embedder *embedClient
 }
 
 func New(db *store.DB, cfg *config.Config) *Handler {
-	return &Handler{db: db, cfg: cfg}
+	return &Handler{
+		db:       db,
+		cfg:      cfg,
+		embedder: newEmbedClient(cfg.EmbedURL, cfg.AgentToken),
+	}
 }
 
 func (h *Handler) userID(c *gin.Context) (uuid.UUID, bool) {
@@ -75,11 +80,17 @@ func (h *Handler) Ingest(c *gin.Context) {
 		texts[i] = ch
 	}
 
-	embeddings, err := h.embed(texts)
+	embeddings, err := h.embedder.Embed(c.Request.Context(), texts)
 	if err != nil {
 		// 向量化失败（嵌入服务不可用/模型未就绪）属于下游依赖故障，返回 503 而非 502/500，
 		// 让前端能明确区分「本服务正常，但向量化模块暂不可用」，不影响对话等其余功能。
-		core.Fail(c, http.StatusServiceUnavailable, 3011, "向量化服务不可用: "+err.Error())
+		ingestFailed(c, err)
+		return
+	}
+	// 契约防御：向量与分块必须一一对应，否则宁可失败也不写半份数据。
+	if len(embeddings) != len(chunks) {
+		core.Fail(c, http.StatusInternalServerError, 3011,
+			fmt.Sprintf("向量化结果数量异常: %d 个向量 / %d 个分块", len(embeddings), len(chunks)))
 		return
 	}
 
@@ -134,9 +145,14 @@ func (h *Handler) Search(c *gin.Context) {
 			k = n
 		}
 	}
-	embeddings, err := h.embed([]string{q})
+	embeddings, err := h.embedder.Embed(c.Request.Context(), []string{q})
 	if err != nil {
-		core.Fail(c, http.StatusBadGateway, 3011, "向量化失败: "+err.Error())
+		// 与入库保持一致的语义：检索依赖向量化，失败同样是「下游不可用」。
+		ingestFailed(c, err)
+		return
+	}
+	if len(embeddings) == 0 {
+		core.Fail(c, http.StatusInternalServerError, 3011, "向量化结果为空")
 		return
 	}
 	chunks, err := h.db.SearchChunks(uid, vectorLiteral(embeddings[0]), k)
@@ -185,50 +201,15 @@ func (h *Handler) Delete(c *gin.Context) {
 	core.OK(c, gin.H{"id": docID.String()})
 }
 
-// embed 调用独立 embed 服务的内部 /embed 端点批量获取向量（本地免费模型）。
-func (h *Handler) embed(texts []string) ([][]float64, error) {
-	body, _ := json.Marshal(gin.H{"texts": texts})
-	req, err := http.NewRequest(http.MethodPost, h.cfg.EmbedURL+"/api/agent/embed", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
+// ingestFailed 统一「向量化依赖不可用」的错误语义：返回 503 表示本服务正常、
+// 下游暂时不可用且可重试，让前端与调用方能和其它 5xx 明确区分。
+func ingestFailed(c *gin.Context, err error) {
+	if ErrNotReady(err) {
+		core.Fail(c, http.StatusServiceUnavailable, 3011, "向量化服务不可用: "+err.Error())
+		return
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if h.cfg.AgentToken != "" {
-		req.Header.Set("X-Internal-Token", h.cfg.AgentToken)
-	}
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, errFromStatus(resp.StatusCode, data)
-	}
-	var out struct {
-		Embeddings [][]float64 `json:"embeddings"`
-	}
-	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, err
-	}
-	return out.Embeddings, nil
+	core.Fail(c, http.StatusInternalServerError, 3011, "向量化失败: "+err.Error())
 }
-
-func errFromStatus(code int, data []byte) error {
-	msg := string(data)
-	if len(msg) > 200 {
-		msg = msg[:200]
-	}
-	return &embedError{code: code, msg: msg}
-}
-
-type embedError struct {
-	code int
-	msg  string
-}
-
-func (e *embedError) Error() string { return e.msg }
 
 // chunkText 按字符窗口切分文本，带重叠以避免切断语义。
 func chunkText(text string, size, overlap int) []string {

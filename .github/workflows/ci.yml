@@ -7,6 +7,20 @@ on:
     branches: [main]
 
 jobs:
+  sanity:
+    name: 配置文件校验
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # JSON 结构性损坏（Dockerfile/CI 脚本改写配置的副作用）应在秒级暴露，而不是等到构建。
+      - name: JSON 可解析
+        run: node scripts/check-json.js
+      - name: Compose 配置可用
+        run: docker compose -f docker-compose.yml config -q
+
   backend:
     runs-on: ubuntu-latest
     defaults:
@@ -86,8 +100,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libvips-dev build-essential
       - name: npm install (排除 services 下的 Node 服务 workspace)
         # services/agent、services/embed 与前端无关且依赖体积大，从 workspaces 剔除。
+        # 必须用 Node 改写 JSON：sed 删行会留下尾随逗号，产出非法 JSON（构建期才炸，反馈太晚）。
         run: |
-          sed -i '/"services\//d' package.json
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.workspaces=(p.workspaces||[]).filter(w=>!w.startsWith('services/'));fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
           npm install --no-audit --no-fund
       - name: build frontend
         run: cd frontend && npm run build

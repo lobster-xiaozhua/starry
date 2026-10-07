@@ -1,22 +1,36 @@
 // BackendClient 封装对 Go 后端 REST API 的调用，
 // 携带用户 JWT token 进行鉴权。供 LangGraph 工具和对话持久化使用。
 
+import { fetchWithTimeout } from "./http.js";
+
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8080";
+
+// 后端是内网可达的自家服务，本就有超时保护即可；原先裸 fetch 无超时，
+// 后端一旦卡住会让整轮对话悬挂到客户端放弃为止。
+const BACKEND_TIMEOUT_MS = 15_000;
 
 export async function backendFetch(
   path: string,
   token: string,
   init?: RequestInit,
 ): Promise<any> {
-  const res = await fetch(`${BACKEND_URL}${path}`, {
+  const res = await fetchWithTimeout(`${BACKEND_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
       ...(init?.headers ?? {}),
     },
+    timeoutMs: BACKEND_TIMEOUT_MS,
   });
-  const body: any = await res.json();
+  // 网关/代理拦截时会返回 HTML，直接 json() 只会得到一个难以定位的解析错误。
+  const text = await res.text();
+  let body: any;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error(`backend 返回非 JSON（HTTP ${res.status}）: ${text.slice(0, 200)}`);
+  }
   if (!res.ok || body.code !== 0) {
     throw new Error(body.message || `backend error ${res.status}`);
   }
