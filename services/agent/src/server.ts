@@ -5,7 +5,6 @@ import { authMiddleware } from "./jwt.js";
 import { requestContext } from "./context.js";
 import { supervisorExecutor, dailyExecutor } from "./agents.js";
 import { createModel } from "./llm.js";
-import { embedTexts } from "./embed.js";
 import { maybeSummarize, extractUsage } from "./history.js";
 import {
   listMessages,
@@ -34,28 +33,6 @@ app.use(express.json({ limit: "1mb" }));
 
 const JWT_SECRET = process.env.JWT_SECRET || "notes-test-secret-fixed";
 const PORT = parseInt(process.env.PORT || "3001", 10);
-
-// 内部向量化端点：供 Go 后端在知识库入库/检索时调用。用 X-Internal-Token 保护，
-// 仅允许受信任的内部服务访问（未配置 AGENT_INTERNAL_TOKEN 时视为开发环境放行）。
-const INTERNAL_TOKEN = process.env.AGENT_INTERNAL_TOKEN || "";
-app.post("/api/agent/embed", async (req, res) => {
-  if (INTERNAL_TOKEN && req.header("X-Internal-Token") !== INTERNAL_TOKEN) {
-    res.status(401).json({ code: 1005, message: "internal token required" });
-    return;
-  }
-  const texts = (req.body?.texts as string[]) || [];
-  if (!Array.isArray(texts) || texts.length === 0) {
-    res.status(400).json({ code: 3001, message: "texts required" });
-    return;
-  }
-  try {
-    const embeddings = await embedTexts(texts.slice(0, 64));
-    res.json({ embeddings });
-  } catch (e: any) {
-    console.error("[agent] embed failed:", e);
-    res.status(500).json({ code: 3002, message: e?.message || "embed failed" });
-  }
-});
 
 app.use("/api/agent", authMiddleware(JWT_SECRET));
 

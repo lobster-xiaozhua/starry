@@ -103,7 +103,7 @@ Starry 的 Agent 已从「单一笔记工具助手」升级为**多 Agent 协作
 - **工具集**：笔记工具、免费 `web_search`（DuckDuckGo，零密钥）、`web_fetch`、`calculator`、`current_time`、`knowledge_search`、agent 互联（`message_agent` / `read_messages`）。
 - **Agent 消息互联**：基于 Redis 信箱 + 发布订阅，agent 之间可异步投递与收取消息。
 - **长程任务**：`POST /api/agent/tasks` 提交高层目标，Agent 自动拆步、逐步执行、每步检查点回写后端（`agent_tasks` 表），并通过 `GET /api/agent/tasks/:id/stream` 以 SSE 实时推送进度，支持取消与步数上限（默认 12 步）。
-- **企业知识库 RAG（B 方案）**：`POST /api/knowledge/ingest` 上传文本，Agent 服务用**本地免费模型**（Xenova/all-MiniLM-L6-v2，约 25MB，首次自动下载）向量化，存入 Postgres `pgvector`；`GET /api/knowledge/search` 做余弦相似检索，供 `knowledge_search` 工具使用。
+- **企业知识库 RAG（B 方案）**：`POST /api/knowledge/ingest` 上传文本，由**独立的 embed 向量化服务**用**本地免费模型**（Xenova/all-MiniLM-L6-v2，约 25MB，首次自动下载）向量化，存入 Postgres `pgvector`；`GET /api/knowledge/search` 做余弦相似检索，供 `knowledge_search` 工具使用。向量化已与对话 / Agent 服务解耦，嵌入模型下载被网络拦截时只影响知识库，不会拖垮对话。
 
 ### 开箱使用示例配置
 
@@ -119,7 +119,7 @@ Starry 的 Agent 已从「单一笔记工具助手」升级为**多 Agent 协作
 | GET | `/api/knowledge/docs` | 文档列表 |
 | POST | `/api/agent/tasks` | 创建并运行长程任务 |
 | GET | `/api/agent/tasks/:id/stream` | 任务进度 SSE |
-| POST | `/api/agent/embed` | 内部向量化（需 `X-Internal-Token`） |
+| POST | `/api/agent/embed` | 内部向量化（embed 服务，需 `X-Internal-Token`） |
 
 ## 部署要点
 

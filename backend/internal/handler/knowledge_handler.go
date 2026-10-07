@@ -18,7 +18,7 @@ import (
 )
 
 // KnowledgeHandler 提供企业知识库（RAG）的文档入库、检索、列举与删除。
-// 向量化由 Node agent 服务完成（本地免费模型），本 handler 负责存储与检索。
+// 向量化由独立的 embed 服务完成（本地免费模型），本 handler 负责存储与检索。
 type KnowledgeHandler struct {
 	db  *store.DB
 	cfg *config.Config
@@ -76,7 +76,9 @@ func (h *KnowledgeHandler) Ingest(c *gin.Context) {
 
 	embeddings, err := h.embed(texts)
 	if err != nil {
-		Fail(c, http.StatusBadGateway, 3011, "向量化失败: "+err.Error())
+		// 向量化失败（嵌入服务不可用/模型未就绪）属于下游依赖故障，返回 503 而非 502/500，
+		// 让前端能明确区分「本服务正常，但向量化模块暂不可用」，不影响对话等其余功能。
+		Fail(c, http.StatusServiceUnavailable, 3011, "向量化服务不可用: "+err.Error())
 		return
 	}
 
@@ -182,10 +184,10 @@ func (h *KnowledgeHandler) Delete(c *gin.Context) {
 	OK(c, gin.H{"id": docID.String()})
 }
 
-// embed 调用 agent 服务的内部 /embed 端点批量获取向量（本地免费模型）。
+// embed 调用独立 embed 服务的内部 /embed 端点批量获取向量（本地免费模型）。
 func (h *KnowledgeHandler) embed(texts []string) ([][]float64, error) {
 	body, _ := json.Marshal(gin.H{"texts": texts})
-	req, err := http.NewRequest(http.MethodPost, h.cfg.AgentURL+"/api/agent/embed", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, h.cfg.EmbedURL+"/api/agent/embed", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

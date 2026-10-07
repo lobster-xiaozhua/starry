@@ -53,10 +53,13 @@ services:
       DRIVE_DIR: /data/drive
       AGENT_URL: http://agent:3001
       AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-starry-internal}
+      EMBED_URL: http://embed:3002
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      embed:
         condition: service_healthy
     volumes:
       - uploads:/data/uploads
@@ -100,6 +103,31 @@ services:
       retries: 12
       start_period: 15s
 
+  # 独立向量化（嵌入）服务：与对话 / Agent 编排服务（agent）解耦。仅承载知识库 RAG 的本地
+  # 向量化；HuggingFace 模型下载被网络拦截时只影响知识库入库，绝不会再拖垮对话（502 连环爆）。
+  embed:
+    build:
+      context: ./services/embed
+      dockerfile: Dockerfile
+    environment:
+      PORT: "3002"
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-starry-internal}
+      AGENT_CORS_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost}
+      # HuggingFace 镜像源：受限网络下设置以绕过直连 huggingface.co 失败（如 https://hf-mirror.com）
+      HF_ENDPOINT: ${HF_ENDPOINT:-}
+      # 模型缓存持久化，避免容器重建后重新下载
+      TRANSFORMERS_CACHE: ${TRANSFORMERS_CACHE:-/data/models}
+    expose:
+      - "3002"
+    volumes:
+      - models:/data/models
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+
   frontend:
     build:
       context: .
@@ -117,3 +145,4 @@ volumes:
   redisdata:
   uploads:
   drive:
+  models:

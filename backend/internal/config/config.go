@@ -29,6 +29,7 @@ type Config struct {
 	UploadDir       string
 	AgentURL        string
 	AgentToken      string
+	EmbedURL        string
 	DriveDir        string
 	DriveMaxBytes   int64
 	DriveQuotaBytes int64
@@ -62,6 +63,7 @@ func Load() *Config {
 		UploadDir:       envOr("UPLOAD_DIR", "uploads"),
 		AgentURL:        envOr("AGENT_URL", "http://agent:3001"),
 		AgentToken:      os.Getenv("AGENT_INTERNAL_TOKEN"),
+		EmbedURL:        envOr("EMBED_URL", "http://embed:3002"),
 		DriveDir:        envOr("DRIVE_DIR", "drive"),
 		DriveMaxBytes:   envOrInt("DRIVE_MAX_BYTES", 50<<20),
 		DriveQuotaBytes: envOrInt("DRIVE_QUOTA_BYTES", 1<<30),

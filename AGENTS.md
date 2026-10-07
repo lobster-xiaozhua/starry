@@ -8,6 +8,8 @@ This is a small full-stack workspace:
 - `frontend/` is the primary React/Vite login and administration UI, served on port `5173`.
 - `apps/cloud-notes/` is a second React/Vite notes PWA, served on port `5174`.
 - `packages/shared-api/` contains TypeScript API types/client code shared by both frontends.
+- `services/agent/` is the conversation / agent-orchestration service (LangGraph + LLM streaming, SSE). It no longer performs embeddings.
+- `services/embed/` is a standalone vectorization (embedding) service built on `@xenova/transformers`; it is decoupled from chat so that embedding failures (e.g. model download blocked) never break the conversation flow. The Go backend calls it via `EMBED_URL`.
 - `backend/.env.example` documents backend configuration. Static assets belong in each app's `public/` directory.
 
 ## Build, Test, and Development Commands
