@@ -34,6 +34,7 @@ type Config struct {
 	DriveMaxBytes   int64
 	DriveQuotaBytes int64
 	LogLevel        string // debug | info | warn | error；为空时按环境推导
+	CaptchaEnabled  bool   // 首次初始化时写入的验证码开关；之后由管理端设置接管
 }
 
 func Load() *Config {
@@ -69,6 +70,7 @@ func Load() *Config {
 		DriveMaxBytes:   envOrInt("DRIVE_MAX_BYTES", 50<<20),
 		DriveQuotaBytes: envOrInt("DRIVE_QUOTA_BYTES", 1<<30),
 		LogLevel:        envOr("LOG_LEVEL", ""),
+		CaptchaEnabled:  envOrBool("CAPTCHA_ENABLED", true),
 	}
 }
 
@@ -105,6 +107,19 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// envOrBool 解析布尔型配置；空值或解析失败时回退默认值，与模块开关保持一致的宽容策略。
+func envOrBool(key string, fallback bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return fallback
+	}
+	return b
 }
 
 func envOrInt(key string, fallback int64) int64 {

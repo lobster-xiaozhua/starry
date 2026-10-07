@@ -54,7 +54,7 @@ func main() {
 		log.Error("migration failed", "error", err)
 		os.Exit(1)
 	}
-	if err := db.SeedSettings(); err != nil {
+	if err := db.SeedSettings(cfg.CaptchaEnabled); err != nil {
 		log.Error("settings seed failed", "error", err)
 		os.Exit(1)
 	}
@@ -151,7 +151,7 @@ func main() {
 	}
 
 	go func() {
-		log.Info("server listening", "port", cfg.Port, "env", cfg.AppEnv)
+		log.Info("server listening", "port", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("server failed", "error", err)
 			os.Exit(1)

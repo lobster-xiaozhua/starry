@@ -21,5 +21,9 @@
     "@types/node": "^22.7.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
-  }
+  },
+  "overrides": {
+    "sharp": "^0.33.5"
+  },
+  "comment:sharp": "@xenova/transformers 依赖 sharp ^0.32，其安装脚本要从 GitHub Releases 下载预编译 libvips；受限网络（GitHub 不可达）下镜像构建会失败。sharp 0.33+ 把预编译二进制改为 npm 上的可选平台包（@img/sharp-*），只走 registry，因此这里统一 override。本服务只做文本向量化，不涉及图片处理，API 兼容无风险。"
 }

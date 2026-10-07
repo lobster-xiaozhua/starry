@@ -1,0 +1,12 @@
+# 冒烟/调试用的 compose 覆盖文件：把仅内部暴露的后端端口映射到本机，
+# 以便 scripts/smoke.sh 从宿主机直连验证。生产部署不要使用本文件。
+#
+#   docker compose -f docker-compose.yml -f docker-compose.smoke.yml up -d --build postgres redis embed backend
+#   ADMIN_PASSWORD=<你的密码> ./scripts/smoke.sh
+services:
+  backend:
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      # 冒烟需要确定的登录路径，因此首次建库时关闭验证码（之后仍由管理端设置接管）。
+      CAPTCHA_ENABLED: "false"

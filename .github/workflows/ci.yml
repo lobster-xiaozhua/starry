@@ -57,6 +57,24 @@ jobs:
       - name: test embed
         run: npm test --workspace starry-embed
 
+  smoke:
+    name: 端到端冒烟（compose）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 起栈（postgres + redis + embed + backend）
+        env:
+          JWT_SECRET: ci-smoke-secret-please-ignore
+          ADMIN_PASSWORD: ci-smoke-password
+        run: docker compose -f docker-compose.yml -f docker-compose.smoke.yml up -d --build postgres redis embed backend
+      - name: 冒烟
+        env:
+          ADMIN_PASSWORD: ci-smoke-password
+        run: bash scripts/smoke.sh
+      - name: 收栈
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.smoke.yml down -v
+
   frontend:
     runs-on: ubuntu-latest
     steps:

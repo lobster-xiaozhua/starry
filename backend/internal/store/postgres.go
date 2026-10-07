@@ -87,8 +87,12 @@ func (s *DB) SeedAdmin(username, email, passwordHash string) error {
 	return s.gorm.Create(&admin).Error
 }
 
-func (s *DB) SeedSettings() error {
+// SeedSettings 首次启动时写入默认安全策略。captchaEnabled 来自配置（CAPTCHA_ENABLED），
+// 仅在建库这一次生效——之后由管理端设置接管，避免重启把管理员的选择覆盖回去。
+// 自动化环境（CI / 冒烟）可把它关掉以获得确定的登录路径。
+func (s *DB) SeedSettings(captchaEnabled bool) error {
 	settings := model.DefaultAuthSettings()
+	settings.CaptchaEnabled = captchaEnabled
 	return s.gorm.Where("id = ?", 1).Attrs(settings).FirstOrCreate(&settings).Error
 }
 

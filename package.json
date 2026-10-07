@@ -7,10 +7,14 @@
     "services/agent",
     "services/embed"
   ],
+  "overrides": {
+    "sharp": "^0.33.5"
+  },
   "scripts": {
     "check:modules": "bash backend/scripts/check-module-isolation.sh",
     "check:compose": "docker compose config -q",
     "typecheck:services": "npm run typecheck --workspaces --if-present",
-    "test:services": "npm test --workspaces --if-present"
+    "test:services": "npm test --workspaces --if-present",
+    "smoke": "bash scripts/smoke.sh"
   }
 }
