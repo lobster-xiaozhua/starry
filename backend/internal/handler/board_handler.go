@@ -8,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"login-system/backend/internal/model"
-	"login-system/backend/internal/store"
+	"starry/backend/internal/model"
+	"starry/backend/internal/store"
 )
 
 // BoardHandler 处理看板/列/任务的 CRUD 与移动。

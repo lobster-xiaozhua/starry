@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"login-system/backend/internal/model"
-	"login-system/backend/internal/store"
+	"starry/backend/internal/model"
+	"starry/backend/internal/store"
 )
 
 type SettingsService struct {

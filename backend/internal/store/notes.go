@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"login-system/backend/internal/model"
+	"starry/backend/internal/model"
 )
 
 type NoteListQuery struct {
@@ -287,4 +287,3 @@ func normalizeTags(names []string) []string {
 	}
 	return out
 }
-

@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"login-system/backend/internal/authpkg"
-	"login-system/backend/internal/model"
-	"login-system/backend/internal/store"
+	"starry/backend/internal/authpkg"
+	"starry/backend/internal/model"
+	"starry/backend/internal/store"
 )
 
 type AdminService struct {
@@ -24,14 +24,14 @@ func (s *AdminService) SetMailer(m func(email, token string)) {
 }
 
 type AdminUserView struct {
-	ID         string `json:"id"`
-	Username   string `json:"username"`
-	Email      string `json:"email"`
-	Role       string `json:"role"`
-	Status     string `json:"status"`
-	Locked     bool   `json:"locked"`
-	FailCount  int64   `json:"failCount"`
-	CreatedAt  string `json:"createdAt"`
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	Status    string `json:"status"`
+	Locked    bool   `json:"locked"`
+	FailCount int64  `json:"failCount"`
+	CreatedAt string `json:"createdAt"`
 }
 
 type AdminUserDetail struct {

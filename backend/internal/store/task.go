@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"login-system/backend/internal/model"
+	"starry/backend/internal/model"
 )
 
 // CreateTask 插入一条新的长程任务（默认状态 queued）。

@@ -1,4 +1,4 @@
-module login-system/backend
+module starry/backend
 
 go 1.26.0
 

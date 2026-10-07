@@ -34,17 +34,17 @@ func (BoardColumn) TableName() string { return "board_columns" }
 
 // BoardTask 是看板中的一张任务卡片。
 type BoardTask struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID    uuid.UUID `gorm:"type:uuid;index" json:"-"`
-	BoardID   uuid.UUID `gorm:"type:uuid;index" json:"boardId"`
-	ColumnID  uuid.UUID `gorm:"type:uuid;index" json:"columnId"`
-	Title     string    `gorm:"size:256;not null" json:"title"`
-	Note      string    `gorm:"type:text;not null;default:''" json:"note"`
-	Priority  string    `gorm:"size:16;not null;default:'medium'" json:"priority"` // low|medium|high
+	ID        uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID    uuid.UUID  `gorm:"type:uuid;index" json:"-"`
+	BoardID   uuid.UUID  `gorm:"type:uuid;index" json:"boardId"`
+	ColumnID  uuid.UUID  `gorm:"type:uuid;index" json:"columnId"`
+	Title     string     `gorm:"size:256;not null" json:"title"`
+	Note      string     `gorm:"type:text;not null;default:''" json:"note"`
+	Priority  string     `gorm:"size:16;not null;default:'medium'" json:"priority"` // low|medium|high
 	DueDate   *time.Time `json:"dueDate,omitempty"`
-	Position  int       `json:"position"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	Position  int        `json:"position"`
+	CreatedAt time.Time  `json:"createdAt"`
+	UpdatedAt time.Time  `json:"updatedAt"`
 }
 
 func (BoardTask) TableName() string { return "board_tasks" }

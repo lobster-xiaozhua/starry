@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"sync"
 	"time"
@@ -124,6 +125,8 @@ func (b *Broker) runHub(hub *userHub, ctx context.Context) {
 }
 
 // fanout 将事件投递给该用户除来源会话外的所有会话。
+// 慢消费者（会话缓冲满）时先阻塞一小段时间等待其消费，超时则记录并丢弃，
+// 避免静默丢失事件又无迹可查。
 func (b *Broker) fanout(hub *userHub, ev Event) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -133,7 +136,8 @@ func (b *Broker) fanout(hub *userHub, ev Event) {
 		}
 		select {
 		case ch <- ev:
-		default:
+		case <-time.After(50 * time.Millisecond):
+			log.Printf("[sse] drop event seq=%d type=%s for user=%s session=%s: slow consumer", ev.Seq, ev.Type, hub.userID, id)
 		}
 	}
 }

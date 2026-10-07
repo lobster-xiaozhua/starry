@@ -40,10 +40,10 @@ type AgentTask struct {
 	UserID    uuid.UUID `gorm:"type:uuid;index" json:"-"`
 	Goal      string    `gorm:"type:text;not null" json:"goal"`
 	Status    string    `gorm:"size:16;not null;default:'queued'" json:"status"`
-	Plan      string    `gorm:"type:text" json:"plan"`     // JSON：步骤标题数组
-	Progress  int       `json:"progress"`                  // 已完成步骤数
-	Result    string    `gorm:"type:text" json:"result"`   // 最终结论
-	Error     string    `gorm:"type:text" json:"error"`    // 失败原因
+	Plan      string    `gorm:"type:text" json:"plan"`   // JSON：步骤标题数组
+	Progress  int       `json:"progress"`                // 已完成步骤数
+	Result    string    `gorm:"type:text" json:"result"` // 最终结论
+	Error     string    `gorm:"type:text" json:"error"`  // 失败原因
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }

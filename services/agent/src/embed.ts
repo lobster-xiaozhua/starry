@@ -6,8 +6,14 @@ import transformers from "@xenova/transformers";
 
 const { pipeline, env } = transformers;
 
-// 优先使用镜像，避免直连 HuggingFace 受限。可在 .env 通过 TRANSFORMERS_CACHE 指定缓存目录。
+// 允许远程下载模型（首次调用会从 hub 拉取并缓存到本地）。
 env.allowRemoteModels = true;
+// 支持通过环境变量指定 HuggingFace 镜像源（如 HF_ENDPOINT=https://hf-mirror.com），
+// 以绕过受限网络直连 huggingface.co 失败的问题；未设置时回退官方源。
+// 注：缓存目录仍可通过 TRANSFORMERS_CACHE 指定。
+if (process.env.HF_ENDPOINT) {
+  env.hubUrl = process.env.HF_ENDPOINT;
+}
 
 let extractor: any = null;
 let warming = false;

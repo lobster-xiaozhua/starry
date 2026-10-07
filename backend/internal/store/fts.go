@@ -4,7 +4,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"login-system/backend/internal/model"
+	"starry/backend/internal/model"
 )
 
 const shortQueryLen = 4

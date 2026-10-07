@@ -2,14 +2,16 @@ package handler
 
 import (
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"login-system/backend/internal/config"
-	"login-system/backend/internal/model"
-	"login-system/backend/internal/store"
+	"starry/backend/internal/config"
+	"starry/backend/internal/model"
+	"starry/backend/internal/store"
 )
 
 // DriveHandler 处理网盘的文件/文件夹管理，含配额校验与递归删除。
@@ -127,8 +129,15 @@ func (h *DriveHandler) Upload(c *gin.Context) {
 		Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
+	// 在解析 multipart 之前限制请求体大小，避免超大文件先占满磁盘/内存再被拒。
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, h.cfg.DriveMaxBytes+2<<20)
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
+		// MaxBytesReader 超限会返回 "request body too large"，统一映射为 413。
+		if strings.Contains(err.Error(), "request body too large") {
+			Fail(c, http.StatusRequestEntityTooLarge, 4002, "单文件超过大小上限")
+			return
+		}
 		Fail(c, http.StatusBadRequest, 4001, "file required")
 		return
 	}
@@ -202,7 +211,17 @@ func (h *DriveHandler) Download(c *gin.Context) {
 		Fail(c, http.StatusBadRequest, 4001, "folder cannot be downloaded")
 		return
 	}
-	c.FileAttachment(h.drive.Path(uid, f.StoredName), f.Name)
+	path := h.drive.Path(uid, f.StoredName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		Fail(c, http.StatusInternalServerError, 5000, "读取文件失败")
+		return
+	}
+	// 强制以附件形式下载，并使用 application/octet-stream + nosniff：
+	// 阻止浏览器对上传的 .html 等内容按同源渲染，规避存储型 XSS。
+	c.Header("Content-Disposition", "attachment; filename*=UTF-8''"+url.QueryEscape(f.Name))
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Data(http.StatusOK, "application/octet-stream", data)
 }
 
 // Rename PATCH /api/drive/:id  {name}

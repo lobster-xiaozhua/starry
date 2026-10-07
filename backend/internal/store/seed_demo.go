@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"login-system/backend/internal/model"
+	"starry/backend/internal/model"
 )
 
 // CountNotes 返回该用户的笔记总数，用于判断是否需要灌示例数据。

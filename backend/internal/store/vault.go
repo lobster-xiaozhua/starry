@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"login-system/backend/internal/model"
+	"starry/backend/internal/model"
 )
 
 // GetVaultKey 返回用户的保险箱密钥材料（Salt/Verifier），不存在时返回 nil。

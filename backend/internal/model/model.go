@@ -18,19 +18,19 @@ type User struct {
 }
 
 type AuthSettings struct {
-	ID                      int       `gorm:"primaryKey" json:"-"`
-	PasswordMinLength       int       `json:"passwordMinLength"`
-	PasswordRequireUpper    bool      `json:"passwordRequireUpper"`
-	PasswordRequireLower    bool      `json:"passwordRequireLower"`
-	PasswordRequireDigit    bool      `json:"passwordRequireDigit"`
-	PasswordRequireSpecial  bool      `json:"passwordRequireSpecial"`
-	PasswordMinCategories   int       `json:"passwordMinCategories"`
-	LockoutThreshold        int       `json:"lockoutThreshold"`
-	LockoutDurationMinutes  int       `json:"lockoutDurationMinutes"`
-	AccessTokenMinutes      int       `json:"accessTokenMinutes"`
-	RefreshTokenDays        int       `json:"refreshTokenDays"`
-	CaptchaEnabled          bool      `json:"captchaEnabled"`
-	UpdatedAt               time.Time `json:"updatedAt"`
+	ID                     int       `gorm:"primaryKey" json:"-"`
+	PasswordMinLength      int       `json:"passwordMinLength"`
+	PasswordRequireUpper   bool      `json:"passwordRequireUpper"`
+	PasswordRequireLower   bool      `json:"passwordRequireLower"`
+	PasswordRequireDigit   bool      `json:"passwordRequireDigit"`
+	PasswordRequireSpecial bool      `json:"passwordRequireSpecial"`
+	PasswordMinCategories  int       `json:"passwordMinCategories"`
+	LockoutThreshold       int       `json:"lockoutThreshold"`
+	LockoutDurationMinutes int       `json:"lockoutDurationMinutes"`
+	AccessTokenMinutes     int       `json:"accessTokenMinutes"`
+	RefreshTokenDays       int       `json:"refreshTokenDays"`
+	CaptchaEnabled         bool      `json:"captchaEnabled"`
+	UpdatedAt              time.Time `json:"updatedAt"`
 }
 
 func (AuthSettings) TableName() string { return "auth_settings" }

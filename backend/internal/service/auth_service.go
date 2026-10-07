@@ -9,16 +9,16 @@ import (
 
 	"github.com/google/uuid"
 
-	"login-system/backend/internal/authpkg"
-	"login-system/backend/internal/model"
-	"login-system/backend/internal/store"
+	"starry/backend/internal/authpkg"
+	"starry/backend/internal/model"
+	"starry/backend/internal/store"
 )
 
 type AuthService struct {
-	db           *store.DB
-	rds          *store.Redis
-	jwtSecret    string
-	mailer       func(email, token string)
+	db            *store.DB
+	rds           *store.Redis
+	jwtSecret     string
+	mailer        func(email, token string)
 	verifyCaptcha func(ctx context.Context, captchaID, answer string) bool
 }
 

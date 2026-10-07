@@ -14,7 +14,7 @@ This is a small full-stack workspace:
 
 Run `npm install` at the repository root to install workspace dependencies. Use `./start.sh` for the integrated local environment; it starts PostgreSQL and Redis, builds the Go server, and launches both Vite apps. For focused work, run `npm run dev` in `frontend/` or `apps/cloud-notes/`, and use `go run ./cmd/server` from `backend/`.
 
-Build the frontends with `npm run build` in either frontend package. Build the API with `go build ./cmd/server` from `backend/`. Run Go checks with `go test ./...`; currently the repository has no committed test files, so add focused tests when changing backend behavior.
+Build the frontends with `npm run build` in either frontend package. Build the API with `go build ./cmd/server` from `backend/`. Run Go checks with `go test ./...`. The repository ships focused unit tests (e.g. `internal/config`, `internal/authpkg`); add regression coverage alongside the affected package when changing backend behavior.
 
 ## Coding Style & Naming Conventions
 

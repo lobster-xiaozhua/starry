@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "以下文件未格式化:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test ./...
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install system deps (sharp/libvips 源码编译)
+        run: sudo apt-get update && sudo apt-get install -y libvips-dev build-essential
+      - name: npm install (排除 agent workspace)
+        # services/agent 的 @xenova/transformers 体量大且与前端无关，从 workspaces 剔除。
+        run: |
+          sed -i '/"services\/agent"/d' package.json
+          npm install --no-audit --no-fund
+      - name: build frontend
+        run: cd frontend && npm run build

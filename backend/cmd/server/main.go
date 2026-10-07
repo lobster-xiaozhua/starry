@@ -7,26 +7,32 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mojocn/base64Captcha"
 
-	"login-system/backend/internal/authpkg"
-	"login-system/backend/internal/config"
-	"login-system/backend/internal/handler"
-	"login-system/backend/internal/middleware"
-	"login-system/backend/internal/service"
-	"login-system/backend/internal/sse"
-	"login-system/backend/internal/store"
+	"starry/backend/internal/authpkg"
+	"starry/backend/internal/config"
+	"starry/backend/internal/handler"
+	"starry/backend/internal/middleware"
+	"starry/backend/internal/service"
+	"starry/backend/internal/sse"
+	"starry/backend/internal/store"
 )
 
 func main() {
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		log.Fatal("config invalid: ", err)
+	}
 
 	db, err := store.NewPostgres(fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName,
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName, cfg.DBSSLMode,
 	))
 	if err != nil {
 		log.Fatal("postgres connection failed: ", err)
@@ -43,7 +49,7 @@ func main() {
 		log.Fatal("redis connection failed: ", err)
 	}
 
-	seedAdmin(db, cfg.AdminUsername, cfg.AdminEmail, cfg.AdminPassword)
+	seedAdmin(db, cfg.AdminUsername, cfg.AdminEmail, cfg.AdminPassword, cfg.AppEnv)
 
 	authSvc := service.NewAuthService(db, rds, cfg.JWTSecret)
 	settingsSvc := service.NewSettingsService(db, rds)
@@ -93,13 +99,13 @@ func main() {
 	{
 		auth := api.Group("/auth")
 		{
-			auth.POST("/captcha", authHandler.Captcha)
+			auth.POST("/captcha", middleware.RateLimit(20, time.Minute), authHandler.Captcha)
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/register", authHandler.Register)
 			auth.GET("/password-policy", authHandler.PasswordPolicy)
 			auth.POST("/forgot-password", authHandler.ForgotPassword)
 			auth.POST("/reset-password", authHandler.ResetPassword)
-			auth.POST("/refresh", authHandler.Refresh)
+			auth.POST("/refresh", middleware.RateLimit(30, time.Minute), authHandler.Refresh)
 			auth.POST("/logout", middleware.JWTAuth(cfg.JWTSecret), authHandler.Logout)
 			auth.GET("/me", middleware.JWTAuth(cfg.JWTSecret), authHandler.Me)
 		}
@@ -115,7 +121,7 @@ func main() {
 			admin.POST("/users/:id/reset-password", adminHandler.ForceResetPassword)
 			admin.POST("/users/:id/revoke-sessions", adminHandler.RevokeSessions)
 		}
-		knowledge := api.Group("/knowledge", middleware.JWTAuth(cfg.JWTSecret), middleware.RequireNotes())
+		knowledge := api.Group("/knowledge", middleware.JWTAuth(cfg.JWTSecret), middleware.RequireUser())
 		{
 			knowledge.POST("/ingest", knowledgeHandler.Ingest)
 			knowledge.GET("/search", knowledgeHandler.Search)
@@ -123,7 +129,7 @@ func main() {
 			knowledge.DELETE("/docs/:id", knowledgeHandler.Delete)
 		}
 
-		notes := api.Group("/notes", middleware.JWTAuth(cfg.JWTSecret), middleware.RequireNotes())
+		notes := api.Group("/notes", middleware.JWTAuth(cfg.JWTSecret), middleware.RequireUser())
 		{
 			notes.GET("", notesHandler.List)
 			notes.POST("", notesHandler.Create)
@@ -140,7 +146,7 @@ func main() {
 			notes.GET("/:id/export", notesHandler.ExportMarkdown)
 		}
 
-		agent := api.Group("/agent", middleware.JWTAuth(cfg.JWTSecret), middleware.RequireNotes())
+		agent := api.Group("/agent", middleware.JWTAuth(cfg.JWTSecret), middleware.RequireUser())
 		{
 			agent.GET("/conversations", agentHandler.ListConversations)
 			agent.POST("/conversations", agentHandler.CreateConversation)
@@ -217,43 +223,69 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "postgres": true, "redis": true})
 	})
 
-	log.Printf("server listening on :%s", cfg.Port)
-	if err := r.Run(":" + cfg.Port); err != nil {
-		log.Fatal("server failed: ", err)
+	// 用 http.Server 包裹 gin 引擎，设置超时并支持优雅关闭。
+	// WriteTimeout 不设置（0）：对话/笔记 SSE 流式响应需要长写超时，由各 handler 自行控制；
+	// ReadTimeout 限制请求头+体的读取，防止慢速连接耗尽连接池。
+	srv := &http.Server{
+		Addr:         ":" + cfg.Port,
+		Handler:      r,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 0,
+		IdleTimeout:  120 * time.Second,
 	}
+
+	go func() {
+		log.Printf("server listening on :%s", cfg.Port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server failed: %v", err)
+		}
+	}()
+
+	// 监听 SIGINT/SIGTERM，做连接排空后退出，避免滚动更新丢请求。
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("shutting down server...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("forced shutdown: %v", err)
+	}
+	log.Println("server exited")
 }
 
-func seedAdmin(db *store.DB, username, email, password string) {
+// seedAdmin 首次启动时创建管理员账号。若未提供 ADMIN_PASSWORD：
+//   - 开发环境：生成随机密码并打印一次（便于本地首次登录）；
+//   - 生产环境：拒绝随机生成，强制要求通过环境变量配置（fail-fast），避免无法登录或弱口令。
+//
+// 来自 ADMIN_PASSWORD 的密码出于安全不回显明文，仅提示已使用。
+func seedAdmin(db *store.DB, username, email, password, appEnv string) {
 	existing, err := db.FindUserByUsername(username)
 	if err != nil || existing != nil {
 		return
 	}
-	var hash string
-	if password != "" {
-		h, herr := authpkg.HashPassword(password)
-		if herr != nil {
-			log.Fatal("admin seed failed: ", herr)
+	generated := false
+	if password == "" {
+		if appEnv == "production" {
+			log.Fatal("[SEED] 生产环境必须配置 ADMIN_PASSWORD，拒绝以随机密码启动")
 		}
-		hash = h
-	} else {
 		password = generateRandomPassword()
-		h, herr := authpkg.HashPassword(password)
-		if herr != nil {
-			log.Fatal("admin seed failed: ", herr)
-		}
-		hash = h
+		generated = true
+	}
+	hash, herr := authpkg.HashPassword(password)
+	if herr != nil {
+		log.Fatal("admin seed failed: ", herr)
 	}
 	if err := db.SeedAdmin(username, email, hash); err != nil {
 		log.Fatal("admin seed failed: ", err)
 	}
 	log.Printf("====================================================")
 	log.Printf("[SEED] 管理员账号已初始化 username=%s email=%s", username, email)
-	if password != "" {
-		log.Printf("[SEED] 初始密码: %s（来自 ADMIN_PASSWORD 环境变量）", password)
-		log.Printf("[SEED] 请尽快登录并修改密码")
+	if generated {
+		log.Printf("[SEED] 初始密码(随机生成，仅打印一次，请立即修改): %s", password)
 	} else {
-		log.Printf("[SEED] 初始密码: %s", password)
-		log.Printf("[SEED] 请立即登录并妥善保管，此消息仅打印一次")
+		log.Printf("[SEED] 初始密码来自 ADMIN_PASSWORD 环境变量（出于安全不打印明文）")
 	}
 	log.Printf("====================================================")
 }

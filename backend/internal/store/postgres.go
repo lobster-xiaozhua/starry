@@ -9,7 +9,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"login-system/backend/internal/model"
+	"starry/backend/internal/model"
 )
 
 type DB struct {

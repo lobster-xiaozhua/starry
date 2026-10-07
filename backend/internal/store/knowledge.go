@@ -4,7 +4,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"login-system/backend/internal/model"
+	"starry/backend/internal/model"
 )
 
 // SaveKnowledgeDoc 写入文档元数据。注意：分块与向量由调用方在事务外批量插入。

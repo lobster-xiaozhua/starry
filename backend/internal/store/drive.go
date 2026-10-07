@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"login-system/backend/internal/model"
+	"starry/backend/internal/model"
 )
 
 // DriveStore 负责网盘文件的磁盘读写，按用户分子目录，与笔记附件存储隔离。

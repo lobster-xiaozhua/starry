@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"login-system/backend/internal/model"
-	"login-system/backend/internal/store"
+	"starry/backend/internal/model"
+	"starry/backend/internal/store"
 )
 
 // AgentHandler 处理 AI 对话的 CRUD 端点。流式推理由 Node agent 服务承担，

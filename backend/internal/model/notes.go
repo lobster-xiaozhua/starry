@@ -52,15 +52,15 @@ type NoteStableID struct {
 func (NoteStableID) TableName() string { return "note_stable_ids" }
 
 type Attachment struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID    uuid.UUID `gorm:"type:uuid;index" json:"-"`
+	ID        uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID    uuid.UUID  `gorm:"type:uuid;index" json:"-"`
 	NoteID    *uuid.UUID `gorm:"type:uuid" json:"noteId"`
-	Filename  string    `gorm:"size:256;not null" json:"filename"`
-	URL       string    `gorm:"size:512;not null" json:"url"`
-	ThumbURL  string    `gorm:"size:512" json:"thumbUrl"`
-	SizeBytes int64     `json:"sizeBytes"`
-	MimeType  string    `gorm:"size:128;not null" json:"mimeType"`
-	CreatedAt time.Time `json:"createdAt"`
+	Filename  string     `gorm:"size:256;not null" json:"filename"`
+	URL       string     `gorm:"size:512;not null" json:"url"`
+	ThumbURL  string     `gorm:"size:512" json:"thumbUrl"`
+	SizeBytes int64      `json:"sizeBytes"`
+	MimeType  string     `gorm:"size:128;not null" json:"mimeType"`
+	CreatedAt time.Time  `json:"createdAt"`
 }
 
 func (Attachment) TableName() string { return "attachments" }

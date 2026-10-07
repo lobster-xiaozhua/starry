@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mojocn/base64Captcha"
 
-	"login-system/backend/internal/service"
-	"login-system/backend/internal/store"
+	"starry/backend/internal/service"
+	"starry/backend/internal/store"
 )
 
 type AuthHandler struct {

@@ -6,9 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"login-system/backend/internal/model"
-	"login-system/backend/internal/service"
-	"login-system/backend/internal/store"
+	"starry/backend/internal/model"
+	"starry/backend/internal/service"
+	"starry/backend/internal/store"
 )
 
 type AdminHandler struct {
@@ -21,17 +21,17 @@ func NewAdminHandler(settingsSvc *service.SettingsService, adminSvc *service.Adm
 }
 
 type updateSettingsRequest struct {
-	PasswordMinLength      int   `json:"passwordMinLength"`
-	PasswordRequireUpper   bool  `json:"passwordRequireUpper"`
-	PasswordRequireLower   bool  `json:"passwordRequireLower"`
-	PasswordRequireDigit   bool  `json:"passwordRequireDigit"`
-	PasswordRequireSpecial bool  `json:"passwordRequireSpecial"`
-	PasswordMinCategories  int   `json:"passwordMinCategories"`
-	LockoutThreshold       int   `json:"lockoutThreshold"`
-	LockoutDurationMinutes int   `json:"lockoutDurationMinutes"`
-	AccessTokenMinutes     int   `json:"accessTokenMinutes"`
-	RefreshTokenDays       int   `json:"refreshTokenDays"`
-	CaptchaEnabled         bool  `json:"captchaEnabled"`
+	PasswordMinLength      int  `json:"passwordMinLength"`
+	PasswordRequireUpper   bool `json:"passwordRequireUpper"`
+	PasswordRequireLower   bool `json:"passwordRequireLower"`
+	PasswordRequireDigit   bool `json:"passwordRequireDigit"`
+	PasswordRequireSpecial bool `json:"passwordRequireSpecial"`
+	PasswordMinCategories  int  `json:"passwordMinCategories"`
+	LockoutThreshold       int  `json:"lockoutThreshold"`
+	LockoutDurationMinutes int  `json:"lockoutDurationMinutes"`
+	AccessTokenMinutes     int  `json:"accessTokenMinutes"`
+	RefreshTokenDays       int  `json:"refreshTokenDays"`
+	CaptchaEnabled         bool `json:"captchaEnabled"`
 }
 
 func (h *AdminHandler) GetSettings(c *gin.Context) {

@@ -11,10 +11,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"login-system/backend/internal/model"
-	"login-system/backend/internal/service"
-	"login-system/backend/internal/sse"
-	"login-system/backend/internal/store"
+	"starry/backend/internal/model"
+	"starry/backend/internal/service"
+	"starry/backend/internal/sse"
+	"starry/backend/internal/store"
 )
 
 type NotesHandler struct {

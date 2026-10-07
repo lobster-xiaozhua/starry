@@ -12,9 +12,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"login-system/backend/internal/config"
-	"login-system/backend/internal/model"
-	"login-system/backend/internal/store"
+	"starry/backend/internal/config"
+	"starry/backend/internal/model"
+	"starry/backend/internal/store"
 )
 
 // KnowledgeHandler 提供企业知识库（RAG）的文档入库、检索、列举与删除。

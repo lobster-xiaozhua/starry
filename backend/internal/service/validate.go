@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"login-system/backend/internal/model"
+	"starry/backend/internal/model"
 )
 
 type ValidationIssues map[string]string

@@ -7,8 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"login-system/backend/internal/model"
-	"login-system/backend/internal/store"
+	"starry/backend/internal/model"
+	"starry/backend/internal/store"
 )
 
 // VaultHandler 处理密码/密钥保险箱。服务端只持久化密文与密钥材料，不做任何加解密。

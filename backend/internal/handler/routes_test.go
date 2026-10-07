@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"login-system/backend/internal/config"
+	"starry/backend/internal/config"
 )
 
 // TestRouteTreeBuilds 不依赖数据库，仅验证路由树能正确注册：
@@ -15,8 +15,8 @@ import (
 func TestRouteTreeBuilds(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
-		JWTSecret:      "test-secret",
-		DriveMaxBytes:  50 << 20,
+		JWTSecret:       "test-secret",
+		DriveMaxBytes:   50 << 20,
 		DriveQuotaBytes: 1 << 30,
 	}
 	r := gin.New()

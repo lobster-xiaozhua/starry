@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"login-system/backend/internal/model"
-	"login-system/backend/internal/store"
+	"starry/backend/internal/model"
+	"starry/backend/internal/store"
 )
 
 type NotesService struct {
@@ -241,10 +241,10 @@ func (s *NotesService) ExportAll(ctx context.Context, userID uuid.UUID) ([]Expor
 	for _, n := range notes {
 		out = append(out, ExportRow{
 			ID:       n.ID.String(),
-			Title:   n.Title,
-			Body:    n.Body,
+			Title:    n.Title,
+			Body:     n.Body,
 			Archived: n.Archived,
-			Tags:    n.Tags,
+			Tags:     n.Tags,
 		})
 	}
 	return out, nil
