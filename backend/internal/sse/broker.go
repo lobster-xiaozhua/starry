@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"sync"
 	"time"
@@ -137,7 +137,8 @@ func (b *Broker) fanout(hub *userHub, ev Event) {
 		select {
 		case ch <- ev:
 		case <-time.After(50 * time.Millisecond):
-			log.Printf("[sse] drop event seq=%d type=%s for user=%s session=%s: slow consumer", ev.Seq, ev.Type, hub.userID, id)
+			slog.Warn("sse drop event: slow consumer",
+				"seq", ev.Seq, "type", ev.Type, "user", hub.userID, "session", id)
 		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"github.com/mojocn/base64Captcha"
 
 	"starry/backend/internal/config"
+	"starry/backend/internal/middleware"
 	"starry/backend/internal/service"
 	"starry/backend/internal/sse"
 	"starry/backend/internal/store"
@@ -24,4 +25,5 @@ type Deps struct {
 	Drive    *store.DriveStore        // 网盘文件存储
 	Settings *service.SettingsService // 系统设置（密码策略等，跨 auth/admin 共享）
 	Captcha  *base64Captcha.Captcha   // 验证码生成器
+	Limiter  *middleware.Limiter      // 限流器：多实例时底层为 Redis 共享计数
 }

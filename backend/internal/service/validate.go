@@ -3,7 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"unicode"
 
@@ -98,5 +98,5 @@ func ValidateSettingsUpdate(in model.AuthSettings) ValidationIssues {
 }
 
 func LogResetToken(email, token string) {
-	log.Printf("[DEV-MAIL] password reset token for %s: %s", email, token)
+	slog.Info("[DEV-MAIL] password reset token", "email", email, "token", token)
 }

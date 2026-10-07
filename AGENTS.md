@@ -11,6 +11,13 @@ This is a small full-stack workspace:
 - `services/agent/` is the conversation / agent-orchestration service (LangGraph + LLM streaming, SSE). It no longer performs embeddings.
 - `services/embed/` is a standalone vectorization (embedding) service built on `@xenova/transformers`; it is decoupled from chat so that embedding failures (e.g. model download blocked) never break the conversation flow. The Go backend calls it via `EMBED_URL`.
 - `backend/.env.example` documents backend configuration. Static assets belong in each app's `public/` directory.
+- Cross-cutting infrastructure lives outside modules and is wired once by the composition root: `internal/logx` (structured `slog` logging, JSON in production), `internal/middleware` (request ID, access log with credential redaction, CORS, JWT, and a `Limiter` whose counter is Redis-backed so quotas are shared across replicas), and `internal/store` (Postgres/Redis/file/drive stores).
+
+## Observability & Rate Limiting
+
+- **Logging**: never use the standard `log` package in `backend/`. Use `logx.L()` (or the package-level `slog`), initialized once by `logx.Setup(env, level)` in `main`. Production emits JSON to stdout; development emits text to stderr at debug level.
+- **Request tracing**: `middleware.RequestID()` must run first in the chain; access logs (`middleware.RequestLogger`) carry `request_id`, status, latency and a redacted path. Any new query parameter that carries a credential must be added to `sanitizePath`.
+- **Rate limiting**: endpoints that can be abused anonymously take `d.Limiter.Limit("<scope>", max, window)` from `core.Deps`. Do not call `middleware.RateLimit` in a module — its in-memory counter silently multiplies the quota by the replica count. The limiter fails open when the counter is unavailable, so brute-force defense still depends on the login lockout counters.
 
 ## Build, Test, and Development Commands
 

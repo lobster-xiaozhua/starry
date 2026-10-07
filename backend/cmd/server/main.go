@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"starry/backend/internal/authpkg"
 	"starry/backend/internal/config"
 	"starry/backend/internal/core"
+	"starry/backend/internal/logx"
 	"starry/backend/internal/middleware"
 	"starry/backend/internal/modules"
 	"starry/backend/internal/service"
@@ -30,8 +32,13 @@ import (
 // 新增/下线模块只需改动 modules 注册表与对应模块包，或直接用环境变量开关。
 func main() {
 	cfg := config.Load()
+	// 日志要在配置校验之前初始化：校验失败也要有结构化输出，而不是裸 log。
+	logx.Setup(cfg.AppEnv, cfg.LogLevel)
+	log := logx.L()
+
 	if err := cfg.Validate(); err != nil {
-		log.Fatal("config invalid: ", err)
+		log.Error("config invalid", "error", err)
+		os.Exit(1)
 	}
 
 	db, err := store.NewPostgres(fmt.Sprintf(
@@ -39,22 +46,26 @@ func main() {
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName, cfg.DBSSLMode,
 	))
 	if err != nil {
-		log.Fatal("postgres connection failed: ", err)
+		log.Error("postgres connection failed", "error", err)
+		os.Exit(1)
 	}
 	// 迁移由各业务模块自行声明（见 modules.MigrateAll）：扩展先建，随后按模块顺序建表。
 	if err := modules.MigrateAll(db); err != nil {
-		log.Fatal("migration failed: ", err)
+		log.Error("migration failed", "error", err)
+		os.Exit(1)
 	}
 	if err := db.SeedSettings(); err != nil {
-		log.Fatal("settings seed failed: ", err)
+		log.Error("settings seed failed", "error", err)
+		os.Exit(1)
 	}
 
 	rds, err := store.NewRedis(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
 	if err != nil {
-		log.Fatal("redis connection failed: ", err)
+		log.Error("redis connection failed", "error", err)
+		os.Exit(1)
 	}
 
-	seedAdmin(db, cfg.AdminUsername, cfg.AdminEmail, cfg.AdminPassword, cfg.AppEnv)
+	seedAdmin(db, cfg.AdminUsername, cfg.AdminEmail, cfg.AdminPassword, cfg.AppEnv, log)
 
 	// ---- 共享基础设施 ----
 	// 系统设置被 auth（密码策略）与 admin（参数维护）共同使用，故作为跨模块共享依赖。
@@ -73,13 +84,19 @@ func main() {
 
 	mediaStore := store.NewFileStore(cfg.UploadDir)
 	if err := mediaStore.Init(); err != nil {
-		log.Fatal("init upload dir failed: ", err)
+		log.Error("init upload dir failed", "error", err)
+		os.Exit(1)
 	}
 	driveStore := store.NewDriveStore(cfg.DriveDir)
 	if err := driveStore.Init(); err != nil {
-		log.Fatal("init drive dir failed: ", err)
+		log.Error("init drive dir failed", "error", err)
+		os.Exit(1)
 	}
 	broker := sse.NewBroker(rds.Raw())
+
+	// 限流计数共享于 Redis：多副本部署时额度不会随副本数放大。
+	// Redis 不可用时 Limiter 内部 fail-open（见 middleware.Limiter）。
+	limiter := middleware.NewLimiter(store.NewRedisCounter(rds))
 
 	deps := &core.Deps{
 		Cfg:      cfg,
@@ -90,10 +107,16 @@ func main() {
 		Drive:    driveStore,
 		Settings: settingsSvc,
 		Captcha:  captchaGen,
+		Limiter:  limiter,
 	}
 
-	r := gin.Default()
-	r.Use(middleware.CORS(cfg.CorsOrigins))
+	if cfg.AppEnv == "production" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+	r := gin.New()
+	// 顺序：请求 ID → 恢复 → 访问日志 → CORS。
+	// Recovery 放在日志之前，panic 才能被记录成一条完整访问日志而不是丢失。
+	r.Use(middleware.RequestID(), gin.Recovery(), middleware.RequestLogger("/health"), middleware.CORS(cfg.CorsOrigins))
 
 	api := r.Group("/api")
 	// 全部业务路由由各模块自行注册；被停用的模块其路由完全不挂载。
@@ -128,9 +151,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("server listening on :%s", cfg.Port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server failed: %v", err)
+		log.Info("server listening", "port", cfg.Port, "env", cfg.AppEnv)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -138,14 +162,18 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("shutting down server...")
+	log.Info("shutting down server")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("forced shutdown: %v", err)
+		log.Error("graceful shutdown failed, forcing close", "error", err)
+		if err := srv.Close(); err != nil {
+			log.Error("forced close failed", "error", err)
+		}
+		os.Exit(1)
 	}
-	log.Println("server exited")
+	log.Info("server exited")
 }
 
 // seedAdmin 首次启动时创建管理员账号。若未提供 ADMIN_PASSWORD：
@@ -153,7 +181,7 @@ func main() {
 //   - 生产环境：拒绝随机生成，强制要求通过环境变量配置（fail-fast），避免无法登录或弱口令。
 //
 // 来自 ADMIN_PASSWORD 的密码出于安全不回显明文，仅提示已使用。
-func seedAdmin(db *store.DB, username, email, password, appEnv string) {
+func seedAdmin(db *store.DB, username, email, password, appEnv string, log *slog.Logger) {
 	existing, err := db.FindUserByUsername(username)
 	if err != nil || existing != nil {
 		return
@@ -161,26 +189,28 @@ func seedAdmin(db *store.DB, username, email, password, appEnv string) {
 	generated := false
 	if password == "" {
 		if appEnv == "production" {
-			log.Fatal("[SEED] 生产环境必须配置 ADMIN_PASSWORD，拒绝以随机密码启动")
+			log.Error("生产环境必须配置 ADMIN_PASSWORD，拒绝以随机密码启动")
+			os.Exit(1)
 		}
 		password = generateRandomPassword()
 		generated = true
 	}
 	hash, herr := authpkg.HashPassword(password)
 	if herr != nil {
-		log.Fatal("admin seed failed: ", herr)
+		log.Error("admin seed failed: hash", "error", herr)
+		os.Exit(1)
 	}
 	if err := db.SeedAdmin(username, email, hash); err != nil {
-		log.Fatal("admin seed failed: ", err)
+		log.Error("admin seed failed", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("====================================================")
-	log.Printf("[SEED] 管理员账号已初始化 username=%s email=%s", username, email)
+	log.Info("管理员账号已初始化",
+		"username", username, "email", email,
+		"password_source", map[bool]string{true: "random", false: "ADMIN_PASSWORD"}[generated])
 	if generated {
-		log.Printf("[SEED] 初始密码(随机生成，仅打印一次，请立即修改): %s", password)
-	} else {
-		log.Printf("[SEED] 初始密码来自 ADMIN_PASSWORD 环境变量（出于安全不打印明文）")
+		// 仅开发环境打印一次明文，生产环境不会走到这里。
+		log.Warn("初始密码为随机生成，请登录后立即修改", "password", password)
 	}
-	log.Printf("====================================================")
 }
 
 func generateRandomPassword() string {

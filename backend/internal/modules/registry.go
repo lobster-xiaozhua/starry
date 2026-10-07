@@ -11,7 +11,7 @@ package modules
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -88,9 +88,9 @@ func RegisterAll(api *gin.RouterGroup, d *core.Deps) (enabled, disabled []string
 		m.Register(api, d)
 		enabled = append(enabled, m.Name)
 	}
-	log.Printf("[modules] enabled: %v", enabled)
+	slog.Info("modules enabled", "modules", enabled)
 	if len(disabled) > 0 {
-		log.Printf("[modules] disabled by config: %v", disabled)
+		slog.Info("modules disabled by config", "modules", disabled)
 	}
 	return enabled, disabled
 }
@@ -104,7 +104,8 @@ func Enabled(name string) bool {
 	}
 	b, err := strconv.ParseBool(v)
 	if err != nil {
-		log.Printf("[modules] invalid MODULES_%s_ENABLED=%q, defaulting to enabled", strings.ToUpper(name), v)
+		slog.Warn("invalid module switch, defaulting to enabled",
+			"module", name, "env", "MODULES_"+strings.ToUpper(name)+"_ENABLED", "value", v)
 		return true
 	}
 	return b

@@ -4,8 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -89,63 +87,6 @@ func RequireUser() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"code":    1006,
 				"message": "需要登录后访问",
-				"data":    nil,
-			})
-			return
-		}
-		c.Next()
-	}
-}
-
-// RateLimit 简易内存限流：按客户端 IP 在滑动窗口内计数，超过 max 次返回 429。
-// 适用于 /auth/captcha、/auth/refresh 等防刷端点。
-// 注意：多实例部署时应改用 Redis 共享计数；单实例场景足够。
-func RateLimit(max int, window time.Duration) gin.HandlerFunc {
-	var mu sync.Mutex
-	hits := map[string][]time.Time{}
-
-	// 后台定期清理过期计数，避免内存无限增长。
-	go func() {
-		for range time.Tick(window) {
-			mu.Lock()
-			cutoff := time.Now().Add(-window)
-			for k, ts := range hits {
-				kept := ts[:0]
-				for _, t := range ts {
-					if t.After(cutoff) {
-						kept = append(kept, t)
-					}
-				}
-				if len(kept) == 0 {
-					delete(hits, k)
-				} else {
-					hits[k] = kept
-				}
-			}
-			mu.Unlock()
-		}
-	}()
-
-	return func(c *gin.Context) {
-		key := c.ClientIP()
-		now := time.Now()
-		mu.Lock()
-		cutoff := now.Add(-window)
-		kept := hits[key][:0]
-		for _, t := range hits[key] {
-			if t.After(cutoff) {
-				kept = append(kept, t)
-			}
-		}
-		kept = append(kept, now)
-		hits[key] = kept
-		count := len(kept)
-		mu.Unlock()
-
-		if count > max {
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"code":    1029,
-				"message": "请求过于频繁，请稍后再试",
 				"data":    nil,
 			})
 			return

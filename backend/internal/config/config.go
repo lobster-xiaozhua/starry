@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"log"
+	"log/slog"
 	"os"
 	"strconv"
 )
@@ -33,6 +33,7 @@ type Config struct {
 	DriveDir        string
 	DriveMaxBytes   int64
 	DriveQuotaBytes int64
+	LogLevel        string // debug | info | warn | error；为空时按环境推导
 }
 
 func Load() *Config {
@@ -41,7 +42,7 @@ func Load() *Config {
 		// 未显式配置密钥时回退为随机密钥：每次重启都会让已签发令牌失效，
 		// 仅适用于本地开发。生产部署务必通过环境变量注入稳定密钥。
 		jwtSecret = generateRandomSecret()
-		log.Println("[WARN] JWT_SECRET 未配置，已使用随机密钥；重启后所有会话将失效，生产环境请显式设置")
+		slog.Warn("JWT_SECRET 未配置，已使用随机密钥；重启后所有会话将失效，生产环境请显式设置")
 	}
 	return &Config{
 		AppEnv:          envOr("APP_ENV", "development"),
@@ -67,6 +68,7 @@ func Load() *Config {
 		DriveDir:        envOr("DRIVE_DIR", "drive"),
 		DriveMaxBytes:   envOrInt("DRIVE_MAX_BYTES", 50<<20),
 		DriveQuotaBytes: envOrInt("DRIVE_QUOTA_BYTES", 1<<30),
+		LogLevel:        envOr("LOG_LEVEL", ""),
 	}
 }
 
@@ -90,10 +92,10 @@ func (c *Config) Validate() error {
 	}
 	// 开发环境：仅告警，不阻断启动。
 	if c.DBPassword == "" {
-		log.Println("[WARN] DB_PASSWORD 为空，本地开发可直接连无密码数据库；生产务必配置")
+		slog.Warn("DB_PASSWORD 为空，本地开发可直接连无密码数据库；生产务必配置")
 	}
 	if c.JWTSecret == "" {
-		log.Println("[WARN] JWT_SECRET 为空，已回退随机密钥；生产务必配置稳定密钥")
+		slog.Warn("JWT_SECRET 为空，已回退随机密钥；生产务必配置稳定密钥")
 	}
 	return nil
 }
@@ -117,7 +119,9 @@ func envOrInt(key string, fallback int64) int64 {
 func generateRandomSecret() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		log.Fatal("failed to generate JWT secret: ", err)
+		// 配置加载阶段 logger 尚未初始化，直接用默认 slog（输出到 stderr）。
+		slog.Error("failed to generate JWT secret", "error", err)
+		os.Exit(1)
 	}
 	return hex.EncodeToString(b)
 }
