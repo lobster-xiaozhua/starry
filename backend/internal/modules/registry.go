@@ -10,6 +10,7 @@
 package modules
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -26,26 +27,53 @@ import (
 	"starry/backend/internal/modules/knowledge"
 	"starry/backend/internal/modules/notes"
 	"starry/backend/internal/modules/vault"
+	"starry/backend/internal/store"
 )
 
 // Module 描述一个业务模块。
 type Module struct {
 	Name     string // 模块名，对应开关环境变量 MODULES_<NAME>_ENABLED
 	Register func(api *gin.RouterGroup, d *core.Deps)
+
+	// Migrate 可选：迁移本模块拥有的表。为 nil 表示本模块不拥有独立表
+	// （例如 admin 只操作 auth 拥有的用户与设置表），不参与迁移编排。
+	Migrate func(db *store.DB) error
 }
 
-// All 返回模块清单，顺序即路由注册顺序。
+// All 返回模块清单，顺序即路由注册与迁移执行顺序。
+// auth 居首是因为用户表被其余模块引用；knowledge 需要 pgvector 扩展，
+// 扩展由 MigrateAll 在所有模块之前统一创建。
 func All() []Module {
 	return []Module{
-		{Name: "auth", Register: auth.Register},
+		{Name: "auth", Register: auth.Register, Migrate: auth.Migrate},
 		{Name: "admin", Register: admin.Register},
-		{Name: "knowledge", Register: knowledge.Register},
-		{Name: "notes", Register: notes.Register},
-		{Name: "chat", Register: chat.Register},
-		{Name: "boards", Register: boards.Register},
-		{Name: "drive", Register: drive.Register},
-		{Name: "vault", Register: vault.Register},
+		{Name: "knowledge", Register: knowledge.Register, Migrate: knowledge.Migrate},
+		{Name: "notes", Register: notes.Register, Migrate: notes.Migrate},
+		{Name: "chat", Register: chat.Register, Migrate: chat.Migrate},
+		{Name: "boards", Register: boards.Register, Migrate: boards.Migrate},
+		{Name: "drive", Register: drive.Register, Migrate: drive.Migrate},
+		{Name: "vault", Register: vault.Register, Migrate: vault.Migrate},
 	}
+}
+
+// MigrateAll 按模块顺序执行 schema 迁移：先创建依赖扩展（pgvector / pg_trgm / pgcrypto），
+// 再由各模块迁移自己拥有的表。
+//
+// 迁移与路由共用同一套开关：模块被停用时既不挂载路由、也不迁移其表，
+// 因此「关掉一个模块」是彻底且一致的。此处只做编排拆分，不重命名既有表。
+func MigrateAll(db *store.DB) error {
+	if err := db.EnsureExtensions(); err != nil {
+		return fmt.Errorf("create extensions failed: %w", err)
+	}
+	for _, m := range All() {
+		if !Enabled(m.Name) || m.Migrate == nil {
+			continue
+		}
+		if err := m.Migrate(db); err != nil {
+			return fmt.Errorf("module %s migration failed: %w", m.Name, err)
+		}
+	}
+	return nil
 }
 
 // RegisterAll 装配所有启用的模块，返回启用与停用的模块名，供启动日志汇报。

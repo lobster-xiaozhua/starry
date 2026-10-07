@@ -30,8 +30,9 @@ func (s *DB) Ping() error {
 	return s.gorm.Raw("SELECT 1").Scan(&one).Error
 }
 
-func (s *DB) AutoMigrate() error {
-	// 扩展必须先于建表创建：knowledge_chunks 的 vector(384) 列依赖 pgvector。
+// EnsureExtensions 创建迁移所需的扩展，必须在任何建表动作之前执行：
+// knowledge_chunks 的 vector(384) 列依赖 pgvector，笔记标题模糊搜索依赖 pg_trgm。
+func (s *DB) EnsureExtensions() error {
 	for _, stmt := range []string{
 		"CREATE EXTENSION IF NOT EXISTS pg_trgm",
 		"CREATE EXTENSION IF NOT EXISTS pgcrypto",
@@ -41,28 +42,25 @@ func (s *DB) AutoMigrate() error {
 			return err
 		}
 	}
-	if err := s.gorm.AutoMigrate(
-		&model.User{}, &model.AuthSettings{},
-		&model.Note{}, &model.Tag{}, &model.NoteTag{},
-		&model.NoteStableID{}, &model.Attachment{},
-		&model.Conversation{}, &model.Message{},
-		&model.KnowledgeDoc{}, &model.KnowledgeChunk{},
-		&model.AgentTask{},
-		&model.Board{}, &model.BoardColumn{}, &model.BoardTask{},
-		&model.DriveFile{},
-		&model.VaultKey{}, &model.VaultItem{},
-	); err != nil {
-		return err
+	return nil
+}
+
+// AutoMigrate 对给定模型建表/补列。
+//
+// 各业务模块在自己的 Migrate 中声明「本模块拥有的模型」，由 modules.MigrateAll
+// 按序统一编排。这样 schema 的归属与模块一致：改动某个模块的表不会再牵动他人，
+// 且停用的模块可选择不迁移其表。注意此处只做编排拆分，不重命名任何既有表，
+// 因此不会破坏已部署环境的数据。
+func (s *DB) AutoMigrate(models ...any) error {
+	if len(models) == 0 {
+		return nil
 	}
-	for _, stmt := range []string{
-		"ALTER TABLE notes ADD COLUMN IF NOT EXISTS fts tsvector GENERATED ALWAYS AS " +
-			"(setweight(to_tsvector('simple', coalesce(title, '')), 'A') || " +
-			"setweight(to_tsvector('simple', coalesce(body, '')), 'B')) STORED",
-		"CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id, archived, updated_at DESC)",
-		"CREATE INDEX IF NOT EXISTS idx_notes_fts ON notes USING GIN (fts)",
-		"CREATE INDEX IF NOT EXISTS idx_notes_title_trgm ON notes USING GIN (title gin_trgm_ops)",
-		"CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_user_name ON tags(user_id, name)",
-	} {
+	return s.gorm.AutoMigrate(models...)
+}
+
+// ExecDDL 执行模块自带的 DDL（生成列、索引等），供各模块 Migrate 使用。
+func (s *DB) ExecDDL(stmts ...string) error {
+	for _, stmt := range stmts {
 		if err := s.gorm.Exec(stmt).Error; err != nil {
 			return err
 		}

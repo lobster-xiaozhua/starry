@@ -41,7 +41,8 @@ func main() {
 	if err != nil {
 		log.Fatal("postgres connection failed: ", err)
 	}
-	if err := db.AutoMigrate(); err != nil {
+	// 迁移由各业务模块自行声明（见 modules.MigrateAll）：扩展先建，随后按模块顺序建表。
+	if err := modules.MigrateAll(db); err != nil {
 		log.Fatal("migration failed: ", err)
 	}
 	if err := db.SeedSettings(); err != nil {
