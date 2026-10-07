@@ -88,9 +88,15 @@ app.post("/api/agent/chat", async (req, res) => {
   };
 
   // 客户端断开（关闭页面/中断生成）时提前结束流式循环，避免继续消耗 LLM token。
+  // 注意：不能用 req 的 'close' —— Node 在请求体被 express.json 读完后即会触发该事件，
+  // 会把「正常请求」误判为「客户端已断开」，导致流被立即中断、图不执行、回复为空。
+  // 改用 res 的 'close'，且仅在响应未正常结束时视为真断开。
   let closed = false;
-  req.on("close", () => {
-    closed = true;
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      closed = true;
+      console.warn("[agent] client disconnected mid-stream");
+    }
   });
 
   try {

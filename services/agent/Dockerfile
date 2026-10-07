@@ -2,6 +2,11 @@
 # 使用 Debian (glibc) 基础镜像以确保 @xenova/transformers 的原生 onnxruntime 可加载。
 FROM node:20-bookworm
 WORKDIR /app
+# 安装系统 libvips：@xenova/transformers 传递依赖 sharp 用于图片处理，
+# 受限网络下 sharp 无法从 GitHub Releases 下载预编译 libvips 二进制会导致构建失败；
+# 装系统库后 sharp 自动复用、跳过下载（文本向量化无需图片能力）。
+RUN apt-get update && apt-get install -y --no-install-recommends libvips ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 COPY package.json ./
 RUN npm install --no-audit --no-fund
 COPY . .

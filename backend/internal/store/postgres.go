@@ -31,6 +31,16 @@ func (s *DB) Ping() error {
 }
 
 func (s *DB) AutoMigrate() error {
+	// 扩展必须先于建表创建：knowledge_chunks 的 vector(384) 列依赖 pgvector。
+	for _, stmt := range []string{
+		"CREATE EXTENSION IF NOT EXISTS pg_trgm",
+		"CREATE EXTENSION IF NOT EXISTS pgcrypto",
+		"CREATE EXTENSION IF NOT EXISTS vector",
+	} {
+		if err := s.gorm.Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
 	if err := s.gorm.AutoMigrate(
 		&model.User{}, &model.AuthSettings{},
 		&model.Note{}, &model.Tag{}, &model.NoteTag{},
@@ -45,9 +55,6 @@ func (s *DB) AutoMigrate() error {
 		return err
 	}
 	for _, stmt := range []string{
-		"CREATE EXTENSION IF NOT EXISTS pg_trgm",
-		"CREATE EXTENSION IF NOT EXISTS pgcrypto",
-		"CREATE EXTENSION IF NOT EXISTS vector",
 		"ALTER TABLE notes ADD COLUMN IF NOT EXISTS fts tsvector GENERATED ALWAYS AS " +
 			"(setweight(to_tsvector('simple', coalesce(title, '')), 'A') || " +
 			"setweight(to_tsvector('simple', coalesce(body, '')), 'B')) STORED",

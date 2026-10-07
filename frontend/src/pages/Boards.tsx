@@ -303,7 +303,7 @@ export default function BoardsPage() {
                     }}
                   >
                     <strong style={{ color: 'var(--text)' }}>
-                      {col.title} <span style={{ color: 'var(--text-secondary)' }}>({col.tasks.length})</span>
+                      {col.title} <span style={{ color: 'var(--text-secondary)' }}>{(col.tasks ?? []).length}</span>
                     </strong>
                     <Popconfirm title="删除该列及其任务？" onConfirm={() => handleDeleteColumn(col.id)}>
                       <Button size="small" type="text" danger icon={<Trash2 size={12} />} />
@@ -311,7 +311,7 @@ export default function BoardsPage() {
                   </div>
 
                   <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                    {col.tasks.map((t) => (
+                    {(col.tasks ?? []).map((t) => (
                       <Card
                         key={t.id}
                         size="small"

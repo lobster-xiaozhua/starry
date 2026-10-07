@@ -46,14 +46,22 @@ func (s *DB) ListBoardTree(userID uuid.UUID) ([]BoardView, error) {
 	}
 	colsByBoard := map[uuid.UUID][]ColumnView{}
 	for _, c := range columns {
+		colTasks := taskByCol[c.ID]
+		if colTasks == nil {
+			colTasks = []model.BoardTask{}
+		}
 		colsByBoard[c.BoardID] = append(colsByBoard[c.BoardID], ColumnView{
-			BoardColumn: c, Tasks: taskByCol[c.ID],
+			BoardColumn: c, Tasks: colTasks,
 		})
 	}
 
 	views := make([]BoardView, 0, len(boards))
 	for _, b := range boards {
-		views = append(views, BoardView{Board: b, Columns: colsByBoard[b.ID]})
+		cols := colsByBoard[b.ID]
+		if cols == nil {
+			cols = []ColumnView{}
+		}
+		views = append(views, BoardView{Board: b, Columns: cols})
 	}
 	return views, nil
 }
