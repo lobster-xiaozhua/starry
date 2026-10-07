@@ -1,6 +1,10 @@
 // 本地免费向量化：使用 @xenova/transformers 的 all-MiniLM-L6-v2（384 维），
 // 首次调用会下载模型（约 25MB），之后在内存缓存。完全离线、零密钥。
-import { pipeline, env } from "@xenova/transformers";
+// 该包为 CJS，Node 端需先补浏览器 API 桩（见 polyfill），再用默认导入以兼容 ESM 互操作。
+import "./transformers-polyfill.js";
+import transformers from "@xenova/transformers";
+
+const { pipeline, env } = transformers;
 
 // 优先使用镜像，避免直连 HuggingFace 受限。可在 .env 通过 TRANSFORMERS_CACHE 指定缓存目录。
 env.allowRemoteModels = true;
@@ -17,7 +21,7 @@ async function getExtractor() {
   }
   warming = true;
   try {
-    extractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
+    extractor = await pipeline("embeddings", "Xenova/all-MiniLM-L6-v2");
   } finally {
     warming = false;
   }
