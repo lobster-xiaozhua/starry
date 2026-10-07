@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -66,6 +67,18 @@ func (s *DB) ExecDDL(stmts ...string) error {
 		}
 	}
 	return nil
+}
+
+// ExecDDLBestEffort 执行「有则更好、无则降级」的 DDL，失败只告警不阻断启动。
+//
+// 适用对象：依赖特定扩展版本的可选索引（如 pgvector 的 hnsw）。托管数据库版本参差，
+// 把「索引建不出来」升级成「服务起不来」是典型的可用性事故。
+func (s *DB) ExecDDLBestEffort(stmts ...string) {
+	for _, stmt := range stmts {
+		if err := s.gorm.Exec(stmt).Error; err != nil {
+			slog.Warn("optional DDL skipped", "stmt", stmt, "error", err.Error())
+		}
+	}
 }
 
 func (s *DB) SeedAdmin(username, email, passwordHash string) error {

@@ -23,13 +23,14 @@ func Register(api *gin.RouterGroup, d *core.Deps) {
 
 	g := api.Group("/auth")
 	{
-		// 验证码与刷新令牌是可被滥用的匿名端点，单独限流。
-		// 额度由组合根注入的 Limiter 决定：多实例部署时计数共享于 Redis。
+		// 匿名可访问的写端点全部限流：额度由组合根注入的 Limiter 决定
+		// （多实例部署时计数共享于 Redis，不会随副本数放大）。
+		// 限流只是第一层，账号维度的防暴破仍由失败计数锁定兜底。
 		g.POST("/captcha", d.Limiter.Limit("auth:captcha", 20, time.Minute), h.Captcha)
-		g.POST("/login", h.Login)
-		g.POST("/register", h.Register)
+		g.POST("/login", d.Limiter.Limit("auth:login", 20, time.Minute), h.Login)
+		g.POST("/register", d.Limiter.Limit("auth:register", 10, time.Minute), h.Register)
 		g.GET("/password-policy", h.PasswordPolicy)
-		g.POST("/forgot-password", h.ForgotPassword)
+		g.POST("/forgot-password", d.Limiter.Limit("auth:forgot", 10, time.Minute), h.ForgotPassword)
 		g.POST("/reset-password", h.ResetPassword)
 		g.POST("/refresh", d.Limiter.Limit("auth:refresh", 30, time.Minute), h.Refresh)
 		g.POST("/logout", middleware.JWTAuth(d.Cfg.JWTSecret), h.Logout)
