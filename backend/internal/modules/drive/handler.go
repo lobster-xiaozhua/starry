@@ -1,4 +1,4 @@
-package handler
+package drive
 
 import (
 	"net/http"
@@ -10,22 +10,23 @@ import (
 	"github.com/google/uuid"
 
 	"starry/backend/internal/config"
+	"starry/backend/internal/core"
 	"starry/backend/internal/model"
 	"starry/backend/internal/store"
 )
 
-// DriveHandler 处理网盘的文件/文件夹管理，含配额校验与递归删除。
-type DriveHandler struct {
+// Handler 处理网盘的文件/文件夹管理，含配额校验与递归删除。
+type Handler struct {
 	cfg   *config.Config
 	db    *store.DB
 	drive *store.DriveStore
 }
 
-func NewDriveHandler(cfg *config.Config, db *store.DB, drive *store.DriveStore) *DriveHandler {
-	return &DriveHandler{cfg: cfg, db: db, drive: drive}
+func New(cfg *config.Config, db *store.DB, drive *store.DriveStore) *Handler {
+	return &Handler{cfg: cfg, db: db, drive: drive}
 }
 
-func (h *DriveHandler) userID(c *gin.Context) (uuid.UUID, bool) {
+func (h *Handler) userID(c *gin.Context) (uuid.UUID, bool) {
 	id, _ := c.Get("userID")
 	v, ok := id.(string)
 	if !ok {
@@ -38,34 +39,34 @@ func (h *DriveHandler) userID(c *gin.Context) (uuid.UUID, bool) {
 	return u, true
 }
 
-func (h *DriveHandler) parseID(c *gin.Context, param string) (uuid.UUID, bool) {
+func (h *Handler) parseID(c *gin.Context, param string) (uuid.UUID, bool) {
 	raw := c.Param(param)
 	id, err := uuid.Parse(raw)
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 4000, "invalid id")
+		core.Fail(c, http.StatusBadRequest, 4000, "invalid id")
 		return uuid.Nil, false
 	}
 	return id, true
 }
 
 // parseParent 解析 parent 参数："root" 或 NULL；否则按 uuid 解析。
-func (h *DriveHandler) parseParent(c *gin.Context, raw string) (*uuid.UUID, bool) {
+func (h *Handler) parseParent(c *gin.Context, raw string) (*uuid.UUID, bool) {
 	if raw == "" || raw == "root" {
 		return nil, true
 	}
 	id, err := uuid.Parse(raw)
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 4000, "invalid parent")
+		core.Fail(c, http.StatusBadRequest, 4000, "invalid parent")
 		return nil, false
 	}
 	return &id, true
 }
 
 // List GET /api/drive?parent=<id|root>
-func (h *DriveHandler) List(c *gin.Context) {
+func (h *Handler) List(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	parent, ok := h.parseParent(c, c.Query("parent"))
@@ -74,18 +75,18 @@ func (h *DriveHandler) List(c *gin.Context) {
 	}
 	items, err := h.db.ListDriveChildren(uid, parent)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
 	used, err := h.db.SumDriveUsage(uid)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
 	if items == nil {
 		items = []model.DriveFile{}
 	}
-	OK(c, gin.H{
+	core.OK(c, gin.H{
 		"items":  items,
 		"used":   used,
 		"quota":  h.cfg.DriveQuotaBytes,
@@ -94,10 +95,10 @@ func (h *DriveHandler) List(c *gin.Context) {
 }
 
 // CreateFolder POST /api/drive/folders  {name, parentID?}
-func (h *DriveHandler) CreateFolder(c *gin.Context) {
+func (h *Handler) CreateFolder(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	var body struct {
@@ -105,7 +106,7 @@ func (h *DriveHandler) CreateFolder(c *gin.Context) {
 		ParentID *string `json:"parentID"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Name) == "" {
-		Fail(c, http.StatusBadRequest, 4001, "name required")
+		core.Fail(c, http.StatusBadRequest, 4001, "name required")
 		return
 	}
 	var parentID *uuid.UUID
@@ -116,17 +117,17 @@ func (h *DriveHandler) CreateFolder(c *gin.Context) {
 	}
 	f, err := h.db.CreateDriveFolder(uid, parentID, strings.TrimSpace(body.Name))
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	OK(c, f)
+	core.OK(c, f)
 }
 
 // Upload POST /api/drive/upload  (multipart: file, parentID?)
-func (h *DriveHandler) Upload(c *gin.Context) {
+func (h *Handler) Upload(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	// 在解析 multipart 之前限制请求体大小，避免超大文件先占满磁盘/内存再被拒。
@@ -135,34 +136,34 @@ func (h *DriveHandler) Upload(c *gin.Context) {
 	if err != nil {
 		// MaxBytesReader 超限会返回 "request body too large"，统一映射为 413。
 		if strings.Contains(err.Error(), "request body too large") {
-			Fail(c, http.StatusRequestEntityTooLarge, 4002, "单文件超过大小上限")
+			core.Fail(c, http.StatusRequestEntityTooLarge, 4002, "单文件超过大小上限")
 			return
 		}
-		Fail(c, http.StatusBadRequest, 4001, "file required")
+		core.Fail(c, http.StatusBadRequest, 4001, "file required")
 		return
 	}
 	if fileHeader.Size > h.cfg.DriveMaxBytes {
-		Fail(c, http.StatusBadRequest, 4002, "单文件超过大小上限")
+		core.Fail(c, http.StatusBadRequest, 4002, "单文件超过大小上限")
 		return
 	}
 	used, err := h.db.SumDriveUsage(uid)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
 	if used+fileHeader.Size > h.cfg.DriveQuotaBytes {
-		Fail(c, http.StatusBadRequest, 4003, "网盘空间不足")
+		core.Fail(c, http.StatusBadRequest, 4003, "网盘空间不足")
 		return
 	}
 	src, err := fileHeader.Open()
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
 	defer src.Close()
 	storedName, err := h.drive.Save(uid, src)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
 	var parentID *uuid.UUID
@@ -185,17 +186,17 @@ func (h *DriveHandler) Upload(c *gin.Context) {
 	}
 	if err := h.db.InsertDriveFile(f); err != nil {
 		h.drive.Delete(uid, storedName)
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	OK(c, f)
+	core.OK(c, f)
 }
 
 // Download GET /api/drive/:id/download
-func (h *DriveHandler) Download(c *gin.Context) {
+func (h *Handler) Download(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	id, ok := h.parseID(c, "id")
@@ -204,17 +205,17 @@ func (h *DriveHandler) Download(c *gin.Context) {
 	}
 	f, err := h.db.GetDriveFile(uid, id)
 	if err != nil || f == nil {
-		Fail(c, http.StatusNotFound, 4040, "file not found")
+		core.Fail(c, http.StatusNotFound, 4040, "file not found")
 		return
 	}
 	if f.IsDir {
-		Fail(c, http.StatusBadRequest, 4001, "folder cannot be downloaded")
+		core.Fail(c, http.StatusBadRequest, 4001, "folder cannot be downloaded")
 		return
 	}
 	path := h.drive.Path(uid, f.StoredName)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, "读取文件失败")
+		core.Fail(c, http.StatusInternalServerError, 5000, "读取文件失败")
 		return
 	}
 	// 强制以附件形式下载，并使用 application/octet-stream + nosniff：
@@ -225,10 +226,10 @@ func (h *DriveHandler) Download(c *gin.Context) {
 }
 
 // Rename PATCH /api/drive/:id  {name}
-func (h *DriveHandler) Rename(c *gin.Context) {
+func (h *Handler) Rename(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	id, ok := h.parseID(c, "id")
@@ -239,21 +240,21 @@ func (h *DriveHandler) Rename(c *gin.Context) {
 		Name string `json:"name"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Name) == "" {
-		Fail(c, http.StatusBadRequest, 4001, "name required")
+		core.Fail(c, http.StatusBadRequest, 4001, "name required")
 		return
 	}
 	if err := h.db.RenameDriveFile(uid, id, strings.TrimSpace(body.Name)); err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	OK(c, gin.H{"ok": true})
+	core.OK(c, gin.H{"ok": true})
 }
 
 // Delete DELETE /api/drive/:id  （文件夹递归删除）
-func (h *DriveHandler) Delete(c *gin.Context) {
+func (h *Handler) Delete(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	id, ok := h.parseID(c, "id")
@@ -261,14 +262,14 @@ func (h *DriveHandler) Delete(c *gin.Context) {
 		return
 	}
 	if err := h.deleteNode(uid, id); err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	OK(c, gin.H{"ok": true})
+	core.OK(c, gin.H{"ok": true})
 }
 
 // deleteNode 递归删除节点：先删子文件磁盘 + 子目录，再删自身。
-func (h *DriveHandler) deleteNode(uid, id uuid.UUID) error {
+func (h *Handler) deleteNode(uid, id uuid.UUID) error {
 	node, err := h.db.GetDriveFile(uid, id)
 	if err != nil {
 		return err

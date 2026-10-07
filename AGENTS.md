@@ -4,7 +4,7 @@
 
 This is a small full-stack workspace:
 
-- `backend/` contains the Go API server. The entry point is `cmd/server/main.go`; handlers, services, stores, models, middleware, and SSE support live under `internal/`.
+- `backend/` contains the Go API server, organized as a **modular monolith**. `cmd/server/main.go` is a composition root: it builds shared infrastructure and a `core.Deps` container, then calls `modules.RegisterAll` — business routes do not appear in `main`. Each domain lives in `internal/modules/<name>/` (`auth`, `admin`, `knowledge`, `notes`, `chat`, `boards`, `drive`, `vault`), owns its handler and route registration (`Register`), and may depend only on infrastructure (`core`, `middleware`, `model`, `store`, `config`, `service`, `sse`) — **never on another module**. Any module can be disabled without touching code via `MODULES_<NAME>_ENABLED=false`.
 - `frontend/` is the primary React/Vite login and administration UI, served on port `5173`.
 - `apps/cloud-notes/` is a second React/Vite notes PWA, served on port `5174`.
 - `packages/shared-api/` contains TypeScript API types/client code shared by both frontends.

@@ -1,4 +1,4 @@
-package handler
+package knowledge
 
 import (
 	"bytes"
@@ -13,22 +13,23 @@ import (
 	"github.com/google/uuid"
 
 	"starry/backend/internal/config"
+	"starry/backend/internal/core"
 	"starry/backend/internal/model"
 	"starry/backend/internal/store"
 )
 
-// KnowledgeHandler 提供企业知识库（RAG）的文档入库、检索、列举与删除。
+// Handler 提供企业知识库（RAG）的文档入库、检索、列举与删除。
 // 向量化由独立的 embed 服务完成（本地免费模型），本 handler 负责存储与检索。
-type KnowledgeHandler struct {
+type Handler struct {
 	db  *store.DB
 	cfg *config.Config
 }
 
-func NewKnowledgeHandler(db *store.DB, cfg *config.Config) *KnowledgeHandler {
-	return &KnowledgeHandler{db: db, cfg: cfg}
+func New(db *store.DB, cfg *config.Config) *Handler {
+	return &Handler{db: db, cfg: cfg}
 }
 
-func (h *KnowledgeHandler) userID(c *gin.Context) (uuid.UUID, bool) {
+func (h *Handler) userID(c *gin.Context) (uuid.UUID, bool) {
 	id, _ := c.Get("userID")
 	v, ok := id.(string)
 	if !ok {
@@ -43,10 +44,10 @@ func (h *KnowledgeHandler) userID(c *gin.Context) (uuid.UUID, bool) {
 
 // Ingest POST /api/knowledge/ingest
 // 接收一段文本（标题+正文），切分为分块并向量化后入库。
-func (h *KnowledgeHandler) Ingest(c *gin.Context) {
+func (h *Handler) Ingest(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 3001, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 3001, "invalid user")
 		return
 	}
 	var in struct {
@@ -55,12 +56,12 @@ func (h *KnowledgeHandler) Ingest(c *gin.Context) {
 		Source  string `json:"source"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
-		Fail(c, http.StatusBadRequest, 3008, "invalid body: "+err.Error())
+		core.Fail(c, http.StatusBadRequest, 3008, "invalid body: "+err.Error())
 		return
 	}
 	content := strings.TrimSpace(in.Content)
 	if content == "" {
-		Fail(c, http.StatusBadRequest, 3008, "content 不能为空")
+		core.Fail(c, http.StatusBadRequest, 3008, "content 不能为空")
 		return
 	}
 	title := strings.TrimSpace(in.Title)
@@ -78,7 +79,7 @@ func (h *KnowledgeHandler) Ingest(c *gin.Context) {
 	if err != nil {
 		// 向量化失败（嵌入服务不可用/模型未就绪）属于下游依赖故障，返回 503 而非 502/500，
 		// 让前端能明确区分「本服务正常，但向量化模块暂不可用」，不影响对话等其余功能。
-		Fail(c, http.StatusServiceUnavailable, 3011, "向量化服务不可用: "+err.Error())
+		core.Fail(c, http.StatusServiceUnavailable, 3011, "向量化服务不可用: "+err.Error())
 		return
 	}
 
@@ -91,7 +92,7 @@ func (h *KnowledgeHandler) Ingest(c *gin.Context) {
 		CreatedAt:  time.Now(),
 	}
 	if err := h.db.SaveKnowledgeDoc(doc); err != nil {
-		Fail(c, http.StatusInternalServerError, 3002, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 3002, err.Error())
 		return
 	}
 	rows := make([]model.KnowledgeChunk, len(chunks))
@@ -108,23 +109,23 @@ func (h *KnowledgeHandler) Ingest(c *gin.Context) {
 	if err := h.db.InsertChunks(rows); err != nil {
 		// 入库失败回退删除文档元数据，避免悬挂
 		_ = h.db.DeleteKnowledgeDoc(uid, doc.ID)
-		Fail(c, http.StatusInternalServerError, 3002, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 3002, err.Error())
 		return
 	}
-	OK(c, gin.H{"docId": doc.ID.String(), "chunks": len(chunks)})
+	core.OK(c, gin.H{"docId": doc.ID.String(), "chunks": len(chunks)})
 }
 
 // Search GET /api/knowledge/search?q=...&k=5
 // 对查询做向量化后在用户知识库内做相似度检索，返回片段（供 agent 的 knowledge_search 工具使用）。
-func (h *KnowledgeHandler) Search(c *gin.Context) {
+func (h *Handler) Search(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 3001, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 3001, "invalid user")
 		return
 	}
 	q := strings.TrimSpace(c.Query("q"))
 	if q == "" {
-		Fail(c, http.StatusBadRequest, 3008, "q 不能为空")
+		core.Fail(c, http.StatusBadRequest, 3008, "q 不能为空")
 		return
 	}
 	k := 5
@@ -135,57 +136,57 @@ func (h *KnowledgeHandler) Search(c *gin.Context) {
 	}
 	embeddings, err := h.embed([]string{q})
 	if err != nil {
-		Fail(c, http.StatusBadGateway, 3011, "向量化失败: "+err.Error())
+		core.Fail(c, http.StatusBadGateway, 3011, "向量化失败: "+err.Error())
 		return
 	}
 	chunks, err := h.db.SearchChunks(uid, vectorLiteral(embeddings[0]), k)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 3002, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 3002, err.Error())
 		return
 	}
 	out := make([]gin.H, 0, len(chunks))
 	for _, ch := range chunks {
 		out = append(out, gin.H{"docId": ch.DocID.String(), "content": ch.Content})
 	}
-	OK(c, gin.H{"results": out})
+	core.OK(c, gin.H{"results": out})
 }
 
 // List GET /api/knowledge/docs
-func (h *KnowledgeHandler) List(c *gin.Context) {
+func (h *Handler) List(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 3001, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 3001, "invalid user")
 		return
 	}
 	docs, err := h.db.ListKnowledgeDocs(uid)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 3002, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 3002, err.Error())
 		return
 	}
-	OK(c, gin.H{"docs": docs})
+	core.OK(c, gin.H{"docs": docs})
 }
 
 // Delete DELETE /api/knowledge/docs/:id
-func (h *KnowledgeHandler) Delete(c *gin.Context) {
+func (h *Handler) Delete(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 3001, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 3001, "invalid user")
 		return
 	}
 	docID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 3004, "invalid doc id")
+		core.Fail(c, http.StatusBadRequest, 3004, "invalid doc id")
 		return
 	}
 	if err := h.db.DeleteKnowledgeDoc(uid, docID); err != nil {
-		Fail(c, http.StatusInternalServerError, 3002, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 3002, err.Error())
 		return
 	}
-	OK(c, gin.H{"id": docID.String()})
+	core.OK(c, gin.H{"id": docID.String()})
 }
 
 // embed 调用独立 embed 服务的内部 /embed 端点批量获取向量（本地免费模型）。
-func (h *KnowledgeHandler) embed(texts []string) ([][]float64, error) {
+func (h *Handler) embed(texts []string) ([][]float64, error) {
 	body, _ := json.Marshal(gin.H{"texts": texts})
 	req, err := http.NewRequest(http.MethodPost, h.cfg.EmbedURL+"/api/agent/embed", bytes.NewReader(body))
 	if err != nil {

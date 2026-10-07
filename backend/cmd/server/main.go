@@ -17,13 +17,17 @@ import (
 
 	"starry/backend/internal/authpkg"
 	"starry/backend/internal/config"
-	"starry/backend/internal/handler"
+	"starry/backend/internal/core"
 	"starry/backend/internal/middleware"
+	"starry/backend/internal/modules"
 	"starry/backend/internal/service"
 	"starry/backend/internal/sse"
 	"starry/backend/internal/store"
 )
 
+// main 是组合根（composition root）：只负责构建基础设施与共享依赖，
+// 再由 modules.RegisterAll 装配各业务模块。业务路由不在本文件出现，
+// 新增/下线模块只需改动 modules 注册表与对应模块包，或直接用环境变量开关。
 func main() {
 	cfg := config.Load()
 	if err := cfg.Validate(); err != nil {
@@ -51,9 +55,9 @@ func main() {
 
 	seedAdmin(db, cfg.AdminUsername, cfg.AdminEmail, cfg.AdminPassword, cfg.AppEnv)
 
-	authSvc := service.NewAuthService(db, rds, cfg.JWTSecret)
+	// ---- 共享基础设施 ----
+	// 系统设置被 auth（密码策略）与 admin（参数维护）共同使用，故作为跨模块共享依赖。
 	settingsSvc := service.NewSettingsService(db, rds)
-	adminSvc := service.NewAdminService(db, rds)
 
 	redisStore := authpkg.NewRedisCaptchaStore(
 		func(ctx context.Context, key, value string, ttl time.Duration) error {
@@ -64,20 +68,8 @@ func main() {
 		},
 		func(ctx context.Context, key string) error { return rds.Delete(ctx, key) },
 	)
-	captchaGen := base64Captcha.NewCaptcha(
-		base64Captcha.DefaultDriverDigit,
-		redisStore,
-	)
-	authSvc.SetCaptchaVerifier(func(_ context.Context, captchaID, answer string) bool {
-		return captchaGen.Verify(captchaID, answer, true)
-	})
+	captchaGen := base64Captcha.NewCaptcha(base64Captcha.DefaultDriverDigit, redisStore)
 
-	authHandler := handler.NewAuthHandler(authSvc, settingsSvc, captchaGen)
-	adminHandler := handler.NewAdminHandler(settingsSvc, adminSvc)
-	agentHandler := handler.NewAgentHandler(db, rds)
-	knowledgeHandler := handler.NewKnowledgeHandler(db, cfg)
-
-	notesSvc := service.NewNotesService(db)
 	mediaStore := store.NewFileStore(cfg.UploadDir)
 	if err := mediaStore.Init(); err != nil {
 		log.Fatal("init upload dir failed: ", err)
@@ -87,124 +79,24 @@ func main() {
 		log.Fatal("init drive dir failed: ", err)
 	}
 	broker := sse.NewBroker(rds.Raw())
-	notesHandler := handler.NewNotesHandler(notesSvc, mediaStore, broker)
-	boardHandler := handler.NewBoardHandler(db)
-	driveHandler := handler.NewDriveHandler(cfg, db, driveStore)
-	vaultHandler := handler.NewVaultHandler(db)
+
+	deps := &core.Deps{
+		Cfg:      cfg,
+		DB:       db,
+		Redis:    rds,
+		Broker:   broker,
+		Media:    mediaStore,
+		Drive:    driveStore,
+		Settings: settingsSvc,
+		Captcha:  captchaGen,
+	}
 
 	r := gin.Default()
 	r.Use(middleware.CORS(cfg.CorsOrigins))
 
 	api := r.Group("/api")
-	{
-		auth := api.Group("/auth")
-		{
-			auth.POST("/captcha", middleware.RateLimit(20, time.Minute), authHandler.Captcha)
-			auth.POST("/login", authHandler.Login)
-			auth.POST("/register", authHandler.Register)
-			auth.GET("/password-policy", authHandler.PasswordPolicy)
-			auth.POST("/forgot-password", authHandler.ForgotPassword)
-			auth.POST("/reset-password", authHandler.ResetPassword)
-			auth.POST("/refresh", middleware.RateLimit(30, time.Minute), authHandler.Refresh)
-			auth.POST("/logout", middleware.JWTAuth(cfg.JWTSecret), authHandler.Logout)
-			auth.GET("/me", middleware.JWTAuth(cfg.JWTSecret), authHandler.Me)
-		}
-		admin := api.Group("/admin", middleware.JWTAuth(cfg.JWTSecret), middleware.RequireAdmin())
-		{
-			admin.GET("/settings", adminHandler.GetSettings)
-			admin.PUT("/settings", adminHandler.UpdateSettings)
-			admin.GET("/users", adminHandler.ListUsers)
-			admin.GET("/users/:id", adminHandler.GetUser)
-			admin.POST("/users/:id/unlock", adminHandler.UnlockUser)
-			admin.POST("/users/:id/freeze", adminHandler.FreezeUser)
-			admin.POST("/users/:id/unfreeze", adminHandler.UnfreezeUser)
-			admin.POST("/users/:id/reset-password", adminHandler.ForceResetPassword)
-			admin.POST("/users/:id/revoke-sessions", adminHandler.RevokeSessions)
-		}
-		knowledge := api.Group("/knowledge", middleware.JWTAuth(cfg.JWTSecret), middleware.RequireUser())
-		{
-			knowledge.POST("/ingest", knowledgeHandler.Ingest)
-			knowledge.GET("/search", knowledgeHandler.Search)
-			knowledge.GET("/docs", knowledgeHandler.List)
-			knowledge.DELETE("/docs/:id", knowledgeHandler.Delete)
-		}
-
-		notes := api.Group("/notes", middleware.JWTAuth(cfg.JWTSecret), middleware.RequireUser())
-		{
-			notes.GET("", notesHandler.List)
-			notes.POST("", notesHandler.Create)
-			notes.GET("/tags", notesHandler.Tags)
-			notes.POST("/seed-demo", notesHandler.SeedDemo)
-			notes.POST("/upload", notesHandler.Upload)
-			notes.GET("/export/all", notesHandler.ExportAll)
-			notes.POST("/import", notesHandler.Import)
-			notes.GET("/events", notesHandler.Events)
-			notes.GET("/:id", notesHandler.Get)
-			notes.PUT("/:id", notesHandler.Update)
-			notes.DELETE("/:id", notesHandler.Delete)
-			notes.POST("/:id/archive", notesHandler.Archive)
-			notes.GET("/:id/export", notesHandler.ExportMarkdown)
-		}
-
-		agent := api.Group("/agent", middleware.JWTAuth(cfg.JWTSecret), middleware.RequireUser())
-		{
-			agent.GET("/conversations", agentHandler.ListConversations)
-			agent.POST("/conversations", agentHandler.CreateConversation)
-			agent.POST("/conversations/seed-demo", agentHandler.SeedDemo)
-			agent.PATCH("/conversations/:id", agentHandler.RenameConversation)
-			agent.DELETE("/conversations/:id", agentHandler.DeleteConversation)
-			agent.GET("/conversations/:id/messages", agentHandler.ListMessages)
-			agent.POST("/conversations/:id/messages", agentHandler.SaveMessage)
-			agent.POST("/conversations/:id/messages/delete", agentHandler.DeleteMessages)
-			agent.POST("/usage", agentHandler.RecordUsage)
-			agent.GET("/usage", agentHandler.GetUsage)
-			agent.POST("/tasks", agentHandler.CreateTask)
-			agent.GET("/tasks", agentHandler.ListTasks)
-			agent.GET("/tasks/:id", agentHandler.GetTask)
-			agent.PATCH("/tasks/:id", agentHandler.UpdateTask)
-			agent.POST("/tasks/:id/cancel", agentHandler.CancelTask)
-		}
-
-		boards := api.Group("/boards", middleware.JWTAuth(cfg.JWTSecret))
-		{
-			boards.GET("", boardHandler.List)
-			boards.POST("", boardHandler.Create)
-			boards.PATCH("/:id", boardHandler.Update)
-			boards.DELETE("/:id", boardHandler.Delete)
-			boards.POST("/:id/columns", boardHandler.CreateColumn)
-			boards.POST("/:id/tasks", boardHandler.CreateTask)
-		}
-		columns := api.Group("/columns", middleware.JWTAuth(cfg.JWTSecret))
-		{
-			columns.PATCH("/:id", boardHandler.UpdateColumn)
-			columns.DELETE("/:id", boardHandler.DeleteColumn)
-		}
-		tasks := api.Group("/tasks", middleware.JWTAuth(cfg.JWTSecret))
-		{
-			tasks.PATCH("/:id", boardHandler.UpdateTask)
-			tasks.DELETE("/:id", boardHandler.DeleteTask)
-		}
-
-		drive := api.Group("/drive", middleware.JWTAuth(cfg.JWTSecret))
-		{
-			drive.GET("", driveHandler.List)
-			drive.POST("/folders", driveHandler.CreateFolder)
-			drive.POST("/upload", driveHandler.Upload)
-			drive.GET("/:id/download", driveHandler.Download)
-			drive.PATCH("/:id", driveHandler.Rename)
-			drive.DELETE("/:id", driveHandler.Delete)
-		}
-
-		vault := api.Group("/vault", middleware.JWTAuth(cfg.JWTSecret))
-		{
-			vault.GET("/salt", vaultHandler.GetSalt)
-			vault.POST("/setup", vaultHandler.Setup)
-			vault.GET("/items", vaultHandler.ListItems)
-			vault.POST("/items", vaultHandler.CreateItem)
-			vault.PATCH("/items/:id", vaultHandler.UpdateItem)
-			vault.DELETE("/items/:id", vaultHandler.DeleteItem)
-		}
-	}
+	// 全部业务路由由各模块自行注册；被停用的模块其路由完全不挂载。
+	modules.RegisterAll(api, deps)
 
 	r.Static("/uploads", cfg.UploadDir)
 

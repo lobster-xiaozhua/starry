@@ -1,4 +1,4 @@
-package handler
+package notes
 
 import (
 	"encoding/json"
@@ -11,23 +11,24 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"starry/backend/internal/core"
 	"starry/backend/internal/model"
 	"starry/backend/internal/service"
 	"starry/backend/internal/sse"
 	"starry/backend/internal/store"
 )
 
-type NotesHandler struct {
+type Handler struct {
 	svc    *service.NotesService
 	media  *store.FileStore
 	broker *sse.Broker
 }
 
-func NewNotesHandler(svc *service.NotesService, media *store.FileStore, broker *sse.Broker) *NotesHandler {
-	return &NotesHandler{svc: svc, media: media, broker: broker}
+func New(svc *service.NotesService, media *store.FileStore, broker *sse.Broker) *Handler {
+	return &Handler{svc: svc, media: media, broker: broker}
 }
 
-func (h *NotesHandler) userID(c *gin.Context) (uuid.UUID, bool) {
+func (h *Handler) userID(c *gin.Context) (uuid.UUID, bool) {
 	id, _ := c.Get("userID")
 	v, ok := id.(string)
 	if !ok {
@@ -40,10 +41,10 @@ func (h *NotesHandler) userID(c *gin.Context) (uuid.UUID, bool) {
 	return u, true
 }
 
-func (h *NotesHandler) List(c *gin.Context) {
+func (h *Handler) List(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	page, _ := strconv.Atoi(c.Query("page"))
@@ -51,10 +52,10 @@ func (h *NotesHandler) List(c *gin.Context) {
 	if c.Query("q") != "" {
 		notes, total, err := h.svc.Search(c.Request.Context(), uid, c.Query("q"), page, size)
 		if err != nil {
-			Fail(c, http.StatusInternalServerError, 2004, err.Error())
+			core.Fail(c, http.StatusInternalServerError, 2004, err.Error())
 			return
 		}
-		OK(c, gin.H{"notes": notes, "total": total, "page": page, "size": size})
+		core.OK(c, gin.H{"notes": notes, "total": total, "page": page, "size": size})
 		return
 	}
 	var arch *bool
@@ -70,54 +71,54 @@ func (h *NotesHandler) List(c *gin.Context) {
 		UserID: uid, Tags: tags, Archived: arch, Page: page, Size: size,
 	})
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 2004, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 2004, err.Error())
 		return
 	}
-	OK(c, gin.H{"notes": notes, "total": total, "page": page, "size": size})
+	core.OK(c, gin.H{"notes": notes, "total": total, "page": page, "size": size})
 }
 
 // SeedDemo POST /api/notes/seed-demo
 // 为该用户灌入示例笔记（仅在尚无笔记时执行，幂等）。便于新用户一键体验产品。
-func (h *NotesHandler) SeedDemo(c *gin.Context) {
+func (h *Handler) SeedDemo(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	n, err := h.svc.SeedDemo(c.Request.Context(), uid)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 2004, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 2004, err.Error())
 		return
 	}
 	if n == 0 {
-		OK(c, gin.H{"count": 0, "message": "已有笔记，未重复灌入"})
+		core.OK(c, gin.H{"count": 0, "message": "已有笔记，未重复灌入"})
 		return
 	}
 	h.publish(c, "", "note.created")
-	OK(c, gin.H{"count": n, "message": "已为你加载示例笔记"})
+	core.OK(c, gin.H{"count": n, "message": "已为你加载示例笔记"})
 }
 
-func (h *NotesHandler) Create(c *gin.Context) {
+func (h *Handler) Create(c *gin.Context) {
 	uid, _ := h.userID(c)
 	var in service.CreateNoteInput
 	if err := c.ShouldBindJSON(&in); err != nil {
-		Fail(c, http.StatusBadRequest, 2005, "invalid body: "+err.Error())
+		core.Fail(c, http.StatusBadRequest, 2005, "invalid body: "+err.Error())
 		return
 	}
 	note, err := h.svc.Create(c.Request.Context(), uid, in)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 2006, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 2006, err.Error())
 		return
 	}
 	h.publish(c, note.ID.String(), "note.created")
-	OK(c, note)
+	core.OK(c, note)
 }
 
-func (h *NotesHandler) Get(c *gin.Context) {
+func (h *Handler) Get(c *gin.Context) {
 	uid, _ := h.userID(c)
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 2005, "invalid note id")
+		core.Fail(c, http.StatusBadRequest, 2005, "invalid note id")
 		return
 	}
 	note, err := h.svc.Get(c.Request.Context(), uid, id)
@@ -125,19 +126,19 @@ func (h *NotesHandler) Get(c *gin.Context) {
 		h.noteErr(c, err)
 		return
 	}
-	OK(c, note)
+	core.OK(c, note)
 }
 
-func (h *NotesHandler) Update(c *gin.Context) {
+func (h *Handler) Update(c *gin.Context) {
 	uid, _ := h.userID(c)
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 2005, "invalid note id")
+		core.Fail(c, http.StatusBadRequest, 2005, "invalid note id")
 		return
 	}
 	var in service.UpdateNoteInput
 	if err := c.ShouldBindJSON(&in); err != nil {
-		Fail(c, http.StatusBadRequest, 2005, "invalid body: "+err.Error())
+		core.Fail(c, http.StatusBadRequest, 2005, "invalid body: "+err.Error())
 		return
 	}
 	note, err := h.svc.Update(c.Request.Context(), uid, id, in)
@@ -146,14 +147,14 @@ func (h *NotesHandler) Update(c *gin.Context) {
 		return
 	}
 	h.publish(c, note.ID.String(), "note.updated")
-	OK(c, note)
+	core.OK(c, note)
 }
 
-func (h *NotesHandler) Delete(c *gin.Context) {
+func (h *Handler) Delete(c *gin.Context) {
 	uid, _ := h.userID(c)
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 2005, "invalid note id")
+		core.Fail(c, http.StatusBadRequest, 2005, "invalid note id")
 		return
 	}
 	if err := h.svc.Delete(c.Request.Context(), uid, id); err != nil {
@@ -162,21 +163,21 @@ func (h *NotesHandler) Delete(c *gin.Context) {
 	}
 	h.media.DeleteURLs(h.svc.AttachmentURLs(c.Request.Context(), uid, id))
 	h.publish(c, id.String(), "note.deleted")
-	OK(c, gin.H{"id": id.String()})
+	core.OK(c, gin.H{"id": id.String()})
 }
 
-func (h *NotesHandler) Archive(c *gin.Context) {
+func (h *Handler) Archive(c *gin.Context) {
 	uid, _ := h.userID(c)
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 2005, "invalid note id")
+		core.Fail(c, http.StatusBadRequest, 2005, "invalid note id")
 		return
 	}
 	var in struct {
 		Archived bool `json:"archived"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
-		Fail(c, http.StatusBadRequest, 2005, "invalid body")
+		core.Fail(c, http.StatusBadRequest, 2005, "invalid body")
 		return
 	}
 	if err := h.svc.SetArchived(c.Request.Context(), uid, id, in.Archived); err != nil {
@@ -188,36 +189,36 @@ func (h *NotesHandler) Archive(c *gin.Context) {
 		typ = "note.unarchived"
 	}
 	h.publish(c, id.String(), typ)
-	OK(c, gin.H{"id": id.String(), "archived": in.Archived})
+	core.OK(c, gin.H{"id": id.String(), "archived": in.Archived})
 }
 
-func (h *NotesHandler) Tags(c *gin.Context) {
+func (h *Handler) Tags(c *gin.Context) {
 	uid, _ := h.userID(c)
 	rows, err := h.svc.Tags(c.Request.Context(), uid)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 2007, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 2007, err.Error())
 		return
 	}
-	OK(c, rows)
+	core.OK(c, rows)
 }
 
-func (h *NotesHandler) Upload(c *gin.Context) {
+func (h *Handler) Upload(c *gin.Context) {
 	uid, _ := h.userID(c)
 	file, err := c.FormFile("file")
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 2001, "missing file")
+		core.Fail(c, http.StatusBadRequest, 2001, "missing file")
 		return
 	}
 	fh, err := file.Open()
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 2008, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 2008, err.Error())
 		return
 	}
 	defer fh.Close()
 	mime := file.Header.Get("Content-Type")
 	url, thumb, size, err := h.media.Save(mime, fh)
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 2001, err.Error())
+		core.Fail(c, http.StatusBadRequest, 2001, err.Error())
 		return
 	}
 	var noteID *uuid.UUID
@@ -236,28 +237,28 @@ func (h *NotesHandler) Upload(c *gin.Context) {
 		MimeType:  mime,
 	}
 	if err := h.svc.SaveAttachment(c.Request.Context(), rec); err != nil {
-		Fail(c, http.StatusInternalServerError, 2008, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 2008, err.Error())
 		return
 	}
-	OK(c, gin.H{"url": url, "thumbUrl": thumb})
+	core.OK(c, gin.H{"url": url, "thumbUrl": thumb})
 }
 
-func (h *NotesHandler) ExportAll(c *gin.Context) {
+func (h *Handler) ExportAll(c *gin.Context) {
 	uid, _ := h.userID(c)
 	rows, err := h.svc.ExportAll(c.Request.Context(), uid)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 2009, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 2009, err.Error())
 		return
 	}
 	c.Header("Content-Disposition", "attachment; filename=notes-export.json")
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "ok", "data": rows})
 }
 
-func (h *NotesHandler) ExportMarkdown(c *gin.Context) {
+func (h *Handler) ExportMarkdown(c *gin.Context) {
 	uid, _ := h.userID(c)
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 2005, "invalid note id")
+		core.Fail(c, http.StatusBadRequest, 2005, "invalid note id")
 		return
 	}
 	md, err := h.svc.ExportMarkdown(c.Request.Context(), uid, id)
@@ -269,11 +270,11 @@ func (h *NotesHandler) ExportMarkdown(c *gin.Context) {
 	c.Data(http.StatusOK, "text/markdown; charset=utf-8", []byte(md))
 }
 
-func (h *NotesHandler) Import(c *gin.Context) {
+func (h *Handler) Import(c *gin.Context) {
 	uid, _ := h.userID(c)
 	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 10<<20))
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 2010, "read body failed")
+		core.Fail(c, http.StatusBadRequest, 2010, "read body failed")
 		return
 	}
 	ct := c.ContentType()
@@ -284,18 +285,18 @@ func (h *NotesHandler) Import(c *gin.Context) {
 		notes, err = parseJSONImport(body)
 	}
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 2010, err.Error())
+		core.Fail(c, http.StatusBadRequest, 2010, err.Error())
 		return
 	}
 	res, err := h.svc.Import(c.Request.Context(), uid, notes)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 2011, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 2011, err.Error())
 		return
 	}
-	OK(c, res)
+	core.OK(c, res)
 }
 
-func (h *NotesHandler) Events(c *gin.Context) {
+func (h *Handler) Events(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
 		c.Status(http.StatusUnauthorized)
@@ -354,7 +355,7 @@ func writeSSE(c *gin.Context, event string, ev sse.Event) {
 	c.Writer.WriteString("event: " + event + "\ndata: " + payload + "\nid: " + ev.EventID + "\n\n")
 }
 
-func (h *NotesHandler) publish(c *gin.Context, noteID, typ string) {
+func (h *Handler) publish(c *gin.Context, noteID, typ string) {
 	uid, ok := h.userID(c)
 	if !ok {
 		return
@@ -365,12 +366,12 @@ func (h *NotesHandler) publish(c *gin.Context, noteID, typ string) {
 	})
 }
 
-func (h *NotesHandler) noteErr(c *gin.Context, err error) {
+func (h *Handler) noteErr(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrNoteNotFound):
-		Fail(c, http.StatusNotFound, 2012, "note not found")
+		core.Fail(c, http.StatusNotFound, 2012, "note not found")
 	default:
-		Fail(c, http.StatusInternalServerError, 2013, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 2013, err.Error())
 	}
 }
 

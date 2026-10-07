@@ -1,4 +1,4 @@
-package handler
+package auth
 
 import (
 	"context"
@@ -9,19 +9,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mojocn/base64Captcha"
 
+	"starry/backend/internal/core"
 	"starry/backend/internal/service"
 	"starry/backend/internal/store"
 )
 
-type AuthHandler struct {
+type Handler struct {
 	auth           *service.AuthService
 	settingsSvc    *service.SettingsService
 	captchaGen     *base64Captcha.Captcha
 	captchaEnabled func(ctx context.Context) bool
 }
 
-func NewAuthHandler(auth *service.AuthService, settingsSvc *service.SettingsService, captchaGen *base64Captcha.Captcha) *AuthHandler {
-	h := &AuthHandler{auth: auth, settingsSvc: settingsSvc, captchaGen: captchaGen}
+func New(auth *service.AuthService, settingsSvc *service.SettingsService, captchaGen *base64Captcha.Captcha) *Handler {
+	h := &Handler{auth: auth, settingsSvc: settingsSvc, captchaGen: captchaGen}
 	h.captchaEnabled = func(ctx context.Context) bool {
 		settings, err := settingsSvc.Get(ctx)
 		if err != nil {
@@ -62,25 +63,25 @@ type logoutRequest struct {
 	RefreshToken string `json:"refreshToken" binding:"required"`
 }
 
-func (h *AuthHandler) Captcha(c *gin.Context) {
+func (h *Handler) Captcha(c *gin.Context) {
 	enabled := h.captchaEnabled(c.Request.Context())
 	if !enabled {
-		OK(c, gin.H{"enabled": false})
+		core.OK(c, gin.H{"enabled": false})
 		return
 	}
 	id, b64, answer, err := h.captchaGen.Generate()
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 2001, "验证码生成失败")
+		core.Fail(c, http.StatusInternalServerError, 2001, "验证码生成失败")
 		return
 	}
 	_ = answer
-	OK(c, gin.H{"enabled": true, "captchaId": id, "image": b64})
+	core.OK(c, gin.H{"enabled": true, "captchaId": id, "image": b64})
 }
 
-func (h *AuthHandler) Login(c *gin.Context) {
+func (h *Handler) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Fail(c, http.StatusBadRequest, 1004, "请求参数不完整")
+		core.Fail(c, http.StatusBadRequest, 1004, "请求参数不完整")
 		return
 	}
 	accessToken, refreshToken, user, err := h.auth.Login(
@@ -88,17 +89,17 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	)
 	switch {
 	case errors.Is(err, service.ErrCaptchaRequired):
-		Fail(c, http.StatusBadRequest, 1003, "请输入验证码")
+		core.Fail(c, http.StatusBadRequest, 1003, "请输入验证码")
 	case errors.Is(err, service.ErrCaptchaInvalid):
-		Fail(c, http.StatusBadRequest, 1003, "验证码错误或已过期")
+		core.Fail(c, http.StatusBadRequest, 1003, "验证码错误或已过期")
 	case errors.Is(err, service.ErrLocked):
-		Fail(c, http.StatusLocked, 1002, "账号已锁定，请稍后重试或联系管理员解锁")
+		core.Fail(c, http.StatusLocked, 1002, "账号已锁定，请稍后重试或联系管理员解锁")
 	case errors.Is(err, service.ErrBadCredentials):
-		Fail(c, http.StatusUnauthorized, 1001, "用户名或密码错误")
+		core.Fail(c, http.StatusUnauthorized, 1001, "用户名或密码错误")
 	case err != nil:
-		Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
+		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
 	default:
-		OK(c, gin.H{
+		core.OK(c, gin.H{
 			"accessToken":  accessToken,
 			"refreshToken": refreshToken,
 			"user":         user,
@@ -106,10 +107,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 }
 
-func (h *AuthHandler) Register(c *gin.Context) {
+func (h *Handler) Register(c *gin.Context) {
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Fail(c, http.StatusBadRequest, 1004, "请求参数不完整")
+		core.Fail(c, http.StatusBadRequest, 1004, "请求参数不完整")
 		return
 	}
 	user, err := h.auth.Register(c.Request.Context(), req.Username, req.Email, req.Password)
@@ -117,93 +118,93 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	case errors.Is(err, service.ErrWeakPassword):
 		settings, _ := h.settingsSvc.Get(c.Request.Context())
 		issues := service.ValidatePassword(req.Password, settings)
-		FailWithField(c, http.StatusBadRequest, 1004, "密码不符合安全策略", issues)
+		core.FailWithField(c, http.StatusBadRequest, 1004, "密码不符合安全策略", issues)
 	case errors.Is(err, service.ErrUserExists):
-		FailWithField(c, http.StatusConflict, 1009, "用户名或邮箱已被占用", map[string]string{
+		core.FailWithField(c, http.StatusConflict, 1009, "用户名或邮箱已被占用", map[string]string{
 			"username": "该用户名或邮箱已注册",
 		})
 	case err != nil:
-		Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
+		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
 	default:
-		OK(c, gin.H{"user": user})
+		core.OK(c, gin.H{"user": user})
 	}
 }
 
-func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+func (h *Handler) ForgotPassword(c *gin.Context) {
 	var req forgotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Fail(c, http.StatusBadRequest, 1004, "请输入有效的邮箱地址")
+		core.Fail(c, http.StatusBadRequest, 1004, "请输入有效的邮箱地址")
 		return
 	}
 	if err := h.auth.ForgotPassword(c.Request.Context(), req.Email); err != nil {
-		Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
+		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
 		return
 	}
-	OK(c, gin.H{"message": "如果该邮箱已注册，重置链接已发送"})
+	core.OK(c, gin.H{"message": "如果该邮箱已注册，重置链接已发送"})
 }
 
-func (h *AuthHandler) ResetPassword(c *gin.Context) {
+func (h *Handler) ResetPassword(c *gin.Context) {
 	var req resetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Fail(c, http.StatusBadRequest, 1004, "请求参数不完整")
+		core.Fail(c, http.StatusBadRequest, 1004, "请求参数不完整")
 		return
 	}
 	err := h.auth.ResetPassword(c.Request.Context(), req.Token, req.NewPassword)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		Fail(c, http.StatusBadRequest, 1010, "重置链接无效或已过期，请重新申请")
+		core.Fail(c, http.StatusBadRequest, 1010, "重置链接无效或已过期，请重新申请")
 	case errors.Is(err, service.ErrWeakPassword):
 		settings, _ := h.settingsSvc.Get(c.Request.Context())
 		issues := service.ValidatePassword(req.NewPassword, settings)
-		FailWithField(c, http.StatusBadRequest, 1004, "密码不符合安全策略", issues)
+		core.FailWithField(c, http.StatusBadRequest, 1004, "密码不符合安全策略", issues)
 	case err != nil:
-		Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
+		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
 	default:
-		OK(c, gin.H{"message": "密码重置成功，请使用新密码登录"})
+		core.OK(c, gin.H{"message": "密码重置成功，请使用新密码登录"})
 	}
 }
 
-func (h *AuthHandler) Refresh(c *gin.Context) {
+func (h *Handler) Refresh(c *gin.Context) {
 	var req refreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		Fail(c, http.StatusBadRequest, 1007, "缺少刷新令牌")
+		core.Fail(c, http.StatusBadRequest, 1007, "缺少刷新令牌")
 		return
 	}
 	accessToken, err := h.auth.Refresh(c.Request.Context(), req.RefreshToken)
 	if err != nil {
-		Fail(c, http.StatusUnauthorized, 1007, "登录状态已过期，请重新登录")
+		core.Fail(c, http.StatusUnauthorized, 1007, "登录状态已过期，请重新登录")
 		return
 	}
-	OK(c, gin.H{"accessToken": accessToken})
+	core.OK(c, gin.H{"accessToken": accessToken})
 }
 
-func (h *AuthHandler) Logout(c *gin.Context) {
+func (h *Handler) Logout(c *gin.Context) {
 	var req logoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		OK(c, gin.H{"message": "已登出"})
+		core.OK(c, gin.H{"message": "已登出"})
 		return
 	}
 	_ = h.auth.Logout(c.Request.Context(), req.RefreshToken)
-	OK(c, gin.H{"message": "已登出"})
+	core.OK(c, gin.H{"message": "已登出"})
 }
 
-func (h *AuthHandler) Me(c *gin.Context) {
+func (h *Handler) Me(c *gin.Context) {
 	userID := c.GetString("userID")
 	user, err := h.auth.FindUserByID(c.Request.Context(), userID)
 	if err != nil || user == nil {
-		Fail(c, http.StatusUnauthorized, 1005, "登录状态无效")
+		core.Fail(c, http.StatusUnauthorized, 1005, "登录状态无效")
 		return
 	}
-	OK(c, gin.H{"user": user, "serverTime": time.Now().Format(time.RFC3339)})
+	core.OK(c, gin.H{"user": user, "serverTime": time.Now().Format(time.RFC3339)})
 }
 
-func (h *AuthHandler) PasswordPolicy(c *gin.Context) {
+func (h *Handler) PasswordPolicy(c *gin.Context) {
 	settings, err := h.settingsSvc.Get(c.Request.Context())
 	if err != nil {
-		Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
+		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
 		return
 	}
-	OK(c, gin.H{
+	core.OK(c, gin.H{
 		"passwordMinLength":      settings.PasswordMinLength,
 		"passwordRequireUpper":   settings.PasswordRequireUpper,
 		"passwordRequireLower":   settings.PasswordRequireLower,

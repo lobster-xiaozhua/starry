@@ -1,4 +1,4 @@
-package handler
+package boards
 
 import (
 	"net/http"
@@ -8,20 +8,21 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"starry/backend/internal/core"
 	"starry/backend/internal/model"
 	"starry/backend/internal/store"
 )
 
-// BoardHandler 处理看板/列/任务的 CRUD 与移动。
-type BoardHandler struct {
+// Handler 处理看板/列/任务的 CRUD 与移动。
+type Handler struct {
 	db *store.DB
 }
 
-func NewBoardHandler(db *store.DB) *BoardHandler {
-	return &BoardHandler{db: db}
+func New(db *store.DB) *Handler {
+	return &Handler{db: db}
 }
 
-func (h *BoardHandler) userID(c *gin.Context) (uuid.UUID, bool) {
+func (h *Handler) userID(c *gin.Context) (uuid.UUID, bool) {
 	id, _ := c.Get("userID")
 	v, ok := id.(string)
 	if !ok {
@@ -34,39 +35,39 @@ func (h *BoardHandler) userID(c *gin.Context) (uuid.UUID, bool) {
 	return u, true
 }
 
-func (h *BoardHandler) parseID(c *gin.Context, param string) (uuid.UUID, bool) {
+func (h *Handler) parseID(c *gin.Context, param string) (uuid.UUID, bool) {
 	raw := c.Param(param)
 	id, err := uuid.Parse(raw)
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 4000, "invalid id")
+		core.Fail(c, http.StatusBadRequest, 4000, "invalid id")
 		return uuid.Nil, false
 	}
 	return id, true
 }
 
 // List GET /api/boards
-func (h *BoardHandler) List(c *gin.Context) {
+func (h *Handler) List(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	tree, err := h.db.ListBoardTree(uid)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
 	if tree == nil {
 		tree = []store.BoardView{}
 	}
-	OK(c, gin.H{"boards": tree})
+	core.OK(c, gin.H{"boards": tree})
 }
 
 // Create POST /api/boards  {name, color?}
-func (h *BoardHandler) Create(c *gin.Context) {
+func (h *Handler) Create(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	var body struct {
@@ -74,22 +75,22 @@ func (h *BoardHandler) Create(c *gin.Context) {
 		Color string `json:"color"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Name) == "" {
-		Fail(c, http.StatusBadRequest, 4001, "name required")
+		core.Fail(c, http.StatusBadRequest, 4001, "name required")
 		return
 	}
 	board, err := h.db.CreateBoard(uid, strings.TrimSpace(body.Name), body.Color)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	OK(c, board)
+	core.OK(c, board)
 }
 
 // Update PATCH /api/boards/:id  {name?, color?, position?}
-func (h *BoardHandler) Update(c *gin.Context) {
+func (h *Handler) Update(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	boardID, ok := h.parseID(c, "id")
@@ -102,21 +103,21 @@ func (h *BoardHandler) Update(c *gin.Context) {
 		Position *int    `json:"position"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		Fail(c, http.StatusBadRequest, 4001, "invalid body")
+		core.Fail(c, http.StatusBadRequest, 4001, "invalid body")
 		return
 	}
 	if err := h.db.UpdateBoard(uid, boardID, body.Name, body.Color, body.Position); err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	OK(c, gin.H{"ok": true})
+	core.OK(c, gin.H{"ok": true})
 }
 
 // Delete DELETE /api/boards/:id
-func (h *BoardHandler) Delete(c *gin.Context) {
+func (h *Handler) Delete(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	boardID, ok := h.parseID(c, "id")
@@ -124,17 +125,17 @@ func (h *BoardHandler) Delete(c *gin.Context) {
 		return
 	}
 	if err := h.db.DeleteBoard(uid, boardID); err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	OK(c, gin.H{"ok": true})
+	core.OK(c, gin.H{"ok": true})
 }
 
 // CreateColumn POST /api/boards/:id/columns  {title}
-func (h *BoardHandler) CreateColumn(c *gin.Context) {
+func (h *Handler) CreateColumn(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	boardID, ok := h.parseID(c, "id")
@@ -145,22 +146,22 @@ func (h *BoardHandler) CreateColumn(c *gin.Context) {
 		Title string `json:"title"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Title) == "" {
-		Fail(c, http.StatusBadRequest, 4001, "title required")
+		core.Fail(c, http.StatusBadRequest, 4001, "title required")
 		return
 	}
 	col, err := h.db.CreateColumn(uid, boardID, strings.TrimSpace(body.Title))
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	OK(c, col)
+	core.OK(c, col)
 }
 
 // UpdateColumn PATCH /api/columns/:id  {title?, position?}
-func (h *BoardHandler) UpdateColumn(c *gin.Context) {
+func (h *Handler) UpdateColumn(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	colID, ok := h.parseID(c, "id")
@@ -172,21 +173,21 @@ func (h *BoardHandler) UpdateColumn(c *gin.Context) {
 		Position *int    `json:"position"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		Fail(c, http.StatusBadRequest, 4001, "invalid body")
+		core.Fail(c, http.StatusBadRequest, 4001, "invalid body")
 		return
 	}
 	if err := h.db.UpdateColumn(uid, colID, body.Title, body.Position); err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	OK(c, gin.H{"ok": true})
+	core.OK(c, gin.H{"ok": true})
 }
 
 // DeleteColumn DELETE /api/columns/:id
-func (h *BoardHandler) DeleteColumn(c *gin.Context) {
+func (h *Handler) DeleteColumn(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	colID, ok := h.parseID(c, "id")
@@ -194,17 +195,17 @@ func (h *BoardHandler) DeleteColumn(c *gin.Context) {
 		return
 	}
 	if err := h.db.DeleteColumn(uid, colID); err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	OK(c, gin.H{"ok": true})
+	core.OK(c, gin.H{"ok": true})
 }
 
 // CreateTask POST /api/boards/:id/tasks  {title, columnId, note?, priority?, due?}
-func (h *BoardHandler) CreateTask(c *gin.Context) {
+func (h *Handler) CreateTask(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	boardID, ok := h.parseID(c, "id")
@@ -219,12 +220,12 @@ func (h *BoardHandler) CreateTask(c *gin.Context) {
 		Due      *string `json:"due"` // ISO time
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Title) == "" {
-		Fail(c, http.StatusBadRequest, 4001, "title required")
+		core.Fail(c, http.StatusBadRequest, 4001, "title required")
 		return
 	}
 	colID, err := uuid.Parse(body.ColumnID)
 	if err != nil {
-		Fail(c, http.StatusBadRequest, 4002, "invalid columnId")
+		core.Fail(c, http.StatusBadRequest, 4002, "invalid columnId")
 		return
 	}
 	priority := body.Priority
@@ -246,18 +247,18 @@ func (h *BoardHandler) CreateTask(c *gin.Context) {
 	}
 	created, err := h.db.CreateBoardTask(task)
 	if err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	OK(c, created)
+	core.OK(c, created)
 }
 
 // UpdateTask PATCH /api/tasks/:id
 // 可更新：title, note, priority, due, columnId, position（移动/改状态）
-func (h *BoardHandler) UpdateTask(c *gin.Context) {
+func (h *Handler) UpdateTask(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	taskID, ok := h.parseID(c, "id")
@@ -273,7 +274,7 @@ func (h *BoardHandler) UpdateTask(c *gin.Context) {
 		Position *int    `json:"position"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		Fail(c, http.StatusBadRequest, 4001, "invalid body")
+		core.Fail(c, http.StatusBadRequest, 4001, "invalid body")
 		return
 	}
 	patch := map[string]interface{}{}
@@ -302,17 +303,17 @@ func (h *BoardHandler) UpdateTask(c *gin.Context) {
 		}
 	}
 	if err := h.db.UpdateTask(uid, taskID, patch); err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	OK(c, gin.H{"ok": true})
+	core.OK(c, gin.H{"ok": true})
 }
 
 // DeleteTask DELETE /api/tasks/:id
-func (h *BoardHandler) DeleteTask(c *gin.Context) {
+func (h *Handler) DeleteTask(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
-		Fail(c, http.StatusBadRequest, 2003, "invalid user")
+		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
 	taskID, ok := h.parseID(c, "id")
@@ -320,8 +321,8 @@ func (h *BoardHandler) DeleteTask(c *gin.Context) {
 		return
 	}
 	if err := h.db.DeleteTask(uid, taskID); err != nil {
-		Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	OK(c, gin.H{"ok": true})
+	core.OK(c, gin.H{"ok": true})
 }
