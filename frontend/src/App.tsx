@@ -13,6 +13,9 @@ import AdminUserDetail from './pages/AdminUserDetail'
 import NotesPage from './pages/Notes'
 import EditorPage from './pages/Editor'
 import KnowledgePage from './pages/Knowledge'
+import BoardsPage from './pages/Boards'
+import DrivePage from './pages/Drive'
+import VaultPage from './pages/Vault'
 import AppShell from './components/AppShell'
 import { ThemeProvider, useTheme } from './theme'
 import './styles.css'
@@ -77,6 +80,9 @@ function AppRoot() {
               <Route path="notes" element={<NotesPage />} />
               <Route path="notes/:id" element={<EditorPage />} />
               <Route path="knowledge" element={<KnowledgePage />} />
+              <Route path="boards" element={<BoardsPage />} />
+              <Route path="drive" element={<DrivePage />} />
+              <Route path="vault" element={<VaultPage />} />
               <Route
                 path="admin"
                 element={

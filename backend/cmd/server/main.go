@@ -76,8 +76,15 @@ func main() {
 	if err := mediaStore.Init(); err != nil {
 		log.Fatal("init upload dir failed: ", err)
 	}
+	driveStore := store.NewDriveStore(cfg.DriveDir)
+	if err := driveStore.Init(); err != nil {
+		log.Fatal("init drive dir failed: ", err)
+	}
 	broker := sse.NewBroker(rds.Raw())
 	notesHandler := handler.NewNotesHandler(notesSvc, mediaStore, broker)
+	boardHandler := handler.NewBoardHandler(db)
+	driveHandler := handler.NewDriveHandler(cfg, db, driveStore)
+	vaultHandler := handler.NewVaultHandler(db)
 
 	r := gin.Default()
 	r.Use(middleware.CORS(cfg.CorsOrigins))
@@ -150,6 +157,46 @@ func main() {
 			agent.GET("/tasks/:id", agentHandler.GetTask)
 			agent.PATCH("/tasks/:id", agentHandler.UpdateTask)
 			agent.POST("/tasks/:id/cancel", agentHandler.CancelTask)
+		}
+
+		boards := api.Group("/boards", middleware.JWTAuth(cfg.JWTSecret))
+		{
+			boards.GET("", boardHandler.List)
+			boards.POST("", boardHandler.Create)
+			boards.PATCH("/:id", boardHandler.Update)
+			boards.DELETE("/:id", boardHandler.Delete)
+			boards.POST("/:id/columns", boardHandler.CreateColumn)
+			boards.POST("/:id/tasks", boardHandler.CreateTask)
+		}
+		columns := api.Group("/columns", middleware.JWTAuth(cfg.JWTSecret))
+		{
+			columns.PATCH("/:id", boardHandler.UpdateColumn)
+			columns.DELETE("/:id", boardHandler.DeleteColumn)
+		}
+		tasks := api.Group("/tasks", middleware.JWTAuth(cfg.JWTSecret))
+		{
+			tasks.PATCH("/:id", boardHandler.UpdateTask)
+			tasks.DELETE("/:id", boardHandler.DeleteTask)
+		}
+
+		drive := api.Group("/drive", middleware.JWTAuth(cfg.JWTSecret))
+		{
+			drive.GET("", driveHandler.List)
+			drive.POST("/folders", driveHandler.CreateFolder)
+			drive.POST("/upload", driveHandler.Upload)
+			drive.GET("/:id/download", driveHandler.Download)
+			drive.PATCH("/:id", driveHandler.Rename)
+			drive.DELETE("/:id", driveHandler.Delete)
+		}
+
+		vault := api.Group("/vault", middleware.JWTAuth(cfg.JWTSecret))
+		{
+			vault.GET("/salt", vaultHandler.GetSalt)
+			vault.POST("/setup", vaultHandler.Setup)
+			vault.GET("/items", vaultHandler.ListItems)
+			vault.POST("/items", vaultHandler.CreateItem)
+			vault.PATCH("/items/:id", vaultHandler.UpdateItem)
+			vault.DELETE("/items/:id", vaultHandler.DeleteItem)
 		}
 	}
 

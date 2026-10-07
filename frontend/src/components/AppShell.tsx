@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Layout, Menu, Avatar, Button, App } from 'antd'
-import { MessageSquare, Bot, NotebookPen, Shield, Sun, Moon, LogOut, Database } from 'lucide-react'
+import { MessageSquare, Bot, NotebookPen, Shield, Sun, Moon, LogOut, Database, CheckSquare, FolderOpen, Lock } from 'lucide-react'
 import { fetchMe, tokenStore, api, type AuthUser } from '@shared/api'
 import { useTheme } from '../theme'
 
@@ -37,6 +37,9 @@ export default function AppShell() {
     if (p.startsWith('/notes')) return '/notes'
     if (p.startsWith('/knowledge')) return '/knowledge'
     if (p.startsWith('/agent')) return '/agent'
+    if (p.startsWith('/boards')) return '/boards'
+    if (p.startsWith('/drive')) return '/drive'
+    if (p.startsWith('/vault')) return '/vault'
     if (p.startsWith('/admin')) return '/admin'
     return '/chat'
   })()
@@ -46,6 +49,9 @@ export default function AppShell() {
     { key: '/agent', icon: <Bot size={18} />, label: '工作' },
     { key: '/notes', icon: <NotebookPen size={18} />, label: '笔记' },
     { key: '/knowledge', icon: <Database size={18} />, label: '知识库' },
+    { key: '/boards', icon: <CheckSquare size={18} />, label: '任务' },
+    { key: '/drive', icon: <FolderOpen size={18} />, label: '网盘' },
+    { key: '/vault', icon: <Lock size={18} />, label: '保险箱' },
     ...(user?.role === 'admin'
       ? [{ key: '/admin', icon: <Shield size={18} />, label: '管理' }]
       : []),

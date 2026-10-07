@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"log"
 	"os"
+	"strconv"
 )
 
 type Config struct {
@@ -25,6 +26,9 @@ type Config struct {
 	UploadDir     string
 	AgentURL      string
 	AgentToken    string
+	DriveDir      string
+	DriveMaxBytes int64
+	DriveQuotaBytes int64
 }
 
 func Load() *Config {
@@ -53,12 +57,24 @@ func Load() *Config {
 		UploadDir:     envOr("UPLOAD_DIR", "uploads"),
 		AgentURL:      envOr("AGENT_URL", "http://agent:3001"),
 		AgentToken:    os.Getenv("AGENT_INTERNAL_TOKEN"),
+		DriveDir:      envOr("DRIVE_DIR", "drive"),
+		DriveMaxBytes: envOrInt("DRIVE_MAX_BYTES", 50<<20),
+		DriveQuotaBytes: envOrInt("DRIVE_QUOTA_BYTES", 1<<30),
 	}
 }
 
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return fallback
+}
+
+func envOrInt(key string, fallback int64) int64 {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n
+		}
 	}
 	return fallback
 }

@@ -38,6 +38,9 @@ func (s *DB) AutoMigrate() error {
 		&model.Conversation{}, &model.Message{},
 		&model.KnowledgeDoc{}, &model.KnowledgeChunk{},
 		&model.AgentTask{},
+		&model.Board{}, &model.BoardColumn{}, &model.BoardTask{},
+		&model.DriveFile{},
+		&model.VaultKey{}, &model.VaultItem{},
 	); err != nil {
 		return err
 	}
