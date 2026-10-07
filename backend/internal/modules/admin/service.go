@@ -1,4 +1,4 @@
-package service
+package admin
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 
 	"starry/backend/internal/authpkg"
 	"starry/backend/internal/model"
+	"starry/backend/internal/service"
 	"starry/backend/internal/store"
 )
 
@@ -15,8 +16,8 @@ type AdminService struct {
 	mailer func(email, token string)
 }
 
-func NewAdminService(db *store.DB, rds *store.Redis) *AdminService {
-	return &AdminService{db: db, rds: rds, mailer: LogResetToken}
+func NewService(db *store.DB, rds *store.Redis) *AdminService {
+	return &AdminService{db: db, rds: rds, mailer: service.LogResetToken}
 }
 
 func (s *AdminService) SetMailer(m func(email, token string)) {
@@ -150,7 +151,7 @@ func (s *AdminService) FreezeUser(ctx context.Context, userID string) error {
 		return store.ErrNotFound
 	}
 	if user.Role == "admin" {
-		return ErrAdminUser
+		return service.ErrAdminUser
 	}
 	if err := s.db.UpdateUserStatus(userID, "frozen"); err != nil {
 		return err

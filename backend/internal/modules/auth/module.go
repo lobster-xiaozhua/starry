@@ -10,12 +10,11 @@ import (
 
 	"starry/backend/internal/core"
 	"starry/backend/internal/middleware"
-	"starry/backend/internal/service"
 )
 
 // Register 装配并挂载认证模块路由。
 func Register(api *gin.RouterGroup, d *core.Deps) {
-	svc := service.NewAuthService(d.DB, d.Redis, d.Cfg.JWTSecret)
+	svc := NewService(d.DB, d.Redis, d.Cfg.JWTSecret)
 	// 验证码校验器依赖生成器实例，在此完成闭环，避免组合根反向依赖本模块细节。
 	svc.SetCaptchaVerifier(func(_ context.Context, captchaID, answer string) bool {
 		return d.Captcha.Verify(captchaID, answer, true)

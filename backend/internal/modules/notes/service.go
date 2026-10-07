@@ -1,4 +1,4 @@
-package service
+package notes
 
 import (
 	"context"
@@ -14,7 +14,7 @@ type NotesService struct {
 	db *store.DB
 }
 
-func NewNotesService(db *store.DB) *NotesService {
+func NewService(db *store.DB) *NotesService {
 	return &NotesService{db: db}
 }
 

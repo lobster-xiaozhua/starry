@@ -6,12 +6,11 @@ import (
 
 	"starry/backend/internal/core"
 	"starry/backend/internal/middleware"
-	"starry/backend/internal/service"
 )
 
 // Register 装配并挂载云笔记模块路由。
 func Register(api *gin.RouterGroup, d *core.Deps) {
-	h := New(service.NewNotesService(d.DB), d.Media, d.Broker)
+	h := New(NewService(d.DB), d.Media, d.Broker)
 
 	g := api.Group("/notes", middleware.JWTAuth(d.Cfg.JWTSecret), middleware.RequireUser())
 	{

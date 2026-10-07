@@ -1,4 +1,4 @@
-package service
+package auth
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 
 	"starry/backend/internal/authpkg"
 	"starry/backend/internal/model"
+	"starry/backend/internal/service"
 	"starry/backend/internal/store"
 )
 
@@ -22,8 +23,8 @@ type AuthService struct {
 	verifyCaptcha func(ctx context.Context, captchaID, answer string) bool
 }
 
-func NewAuthService(db *store.DB, rds *store.Redis, jwtSecret string) *AuthService {
-	return &AuthService{db: db, rds: rds, jwtSecret: jwtSecret, mailer: LogResetToken}
+func NewService(db *store.DB, rds *store.Redis, jwtSecret string) *AuthService {
+	return &AuthService{db: db, rds: rds, jwtSecret: jwtSecret, mailer: service.LogResetToken}
 }
 
 func (s *AuthService) Settings(ctx context.Context) (model.AuthSettings, error) {
@@ -54,10 +55,10 @@ func (s *AuthService) Login(ctx context.Context, username, password, captchaID, 
 	}
 	if settings.CaptchaEnabled {
 		if captchaID == "" || captchaCode == "" {
-			return "", "", nil, ErrCaptchaRequired
+			return "", "", nil, service.ErrCaptchaRequired
 		}
 		if !s.verifyCaptcha(ctx, captchaID, captchaCode) {
-			return "", "", nil, ErrCaptchaInvalid
+			return "", "", nil, service.ErrCaptchaInvalid
 		}
 	}
 	user, err := s.db.FindUserByUsername(username)
@@ -69,7 +70,7 @@ func (s *AuthService) Login(ctx context.Context, username, password, captchaID, 
 		return "", "", nil, err
 	}
 	if locked {
-		return "", "", nil, ErrLocked
+		return "", "", nil, service.ErrLocked
 	}
 	if user == nil || !authpkg.CheckPassword(user.PasswordHash, password) {
 		if user != nil {
@@ -77,10 +78,10 @@ func (s *AuthService) Login(ctx context.Context, username, password, captchaID, 
 				return "", "", nil, err
 			}
 		}
-		return "", "", nil, ErrBadCredentials
+		return "", "", nil, service.ErrBadCredentials
 	}
 	if user.Status != "active" {
-		return "", "", nil, ErrBadCredentials
+		return "", "", nil, service.ErrBadCredentials
 	}
 	if err := s.rds.ClearFailure(ctx, user.ID.String()); err != nil {
 		return "", "", nil, err
@@ -126,22 +127,22 @@ func (s *AuthService) Register(ctx context.Context, username, email, password st
 	if err != nil {
 		return nil, err
 	}
-	if issues := ValidatePassword(password, settings); len(issues) > 0 {
-		return nil, ErrWeakPassword
+	if issues := service.ValidatePassword(password, settings); len(issues) > 0 {
+		return nil, service.ErrWeakPassword
 	}
 	existing, err := s.db.FindUserByUsername(username)
 	if err != nil {
 		return nil, err
 	}
 	if existing != nil {
-		return nil, ErrUserExists
+		return nil, service.ErrUserExists
 	}
 	existing, err = s.db.FindUserByEmail(email)
 	if err != nil {
 		return nil, err
 	}
 	if existing != nil {
-		return nil, ErrUserExists
+		return nil, service.ErrUserExists
 	}
 	hash, err := authpkg.HashPassword(password)
 	if err != nil {
@@ -185,8 +186,8 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 	if err != nil {
 		return err
 	}
-	if issues := ValidatePassword(newPassword, settings); len(issues) > 0 {
-		return ErrWeakPassword
+	if issues := service.ValidatePassword(newPassword, settings); len(issues) > 0 {
+		return service.ErrWeakPassword
 	}
 	userID, err := s.rds.ConsumeResetToken(ctx, token)
 	if err != nil || userID == "" {
@@ -211,21 +212,21 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (string, error) {
 	claims, err := authpkg.ParseRefreshToken(s.jwtSecret, refreshToken)
 	if err != nil {
-		return "", errors.Join(ErrBadCredentials, err)
+		return "", errors.Join(service.ErrBadCredentials, err)
 	}
 	registeredUser, err := s.rds.GetRefreshToken(ctx, claims.ID)
 	if err != nil {
 		return "", err
 	}
 	if registeredUser == "" || registeredUser != claims.UserID {
-		return "", ErrBadCredentials
+		return "", service.ErrBadCredentials
 	}
 	user, err := s.db.FindUserByID(claims.UserID)
 	if err != nil {
 		return "", err
 	}
 	if user == nil || user.Status != "active" {
-		return "", ErrBadCredentials
+		return "", service.ErrBadCredentials
 	}
 	settings, err := s.Settings(ctx)
 	if err != nil {

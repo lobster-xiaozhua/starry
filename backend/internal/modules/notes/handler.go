@@ -13,18 +13,17 @@ import (
 
 	"starry/backend/internal/core"
 	"starry/backend/internal/model"
-	"starry/backend/internal/service"
 	"starry/backend/internal/sse"
 	"starry/backend/internal/store"
 )
 
 type Handler struct {
-	svc    *service.NotesService
+	svc    *NotesService
 	media  *store.FileStore
 	broker *sse.Broker
 }
 
-func New(svc *service.NotesService, media *store.FileStore, broker *sse.Broker) *Handler {
+func New(svc *NotesService, media *store.FileStore, broker *sse.Broker) *Handler {
 	return &Handler{svc: svc, media: media, broker: broker}
 }
 
@@ -100,7 +99,7 @@ func (h *Handler) SeedDemo(c *gin.Context) {
 
 func (h *Handler) Create(c *gin.Context) {
 	uid, _ := h.userID(c)
-	var in service.CreateNoteInput
+	var in CreateNoteInput
 	if err := c.ShouldBindJSON(&in); err != nil {
 		core.Fail(c, http.StatusBadRequest, 2005, "invalid body: "+err.Error())
 		return
@@ -136,7 +135,7 @@ func (h *Handler) Update(c *gin.Context) {
 		core.Fail(c, http.StatusBadRequest, 2005, "invalid note id")
 		return
 	}
-	var in service.UpdateNoteInput
+	var in UpdateNoteInput
 	if err := c.ShouldBindJSON(&in); err != nil {
 		core.Fail(c, http.StatusBadRequest, 2005, "invalid body: "+err.Error())
 		return
@@ -278,7 +277,7 @@ func (h *Handler) Import(c *gin.Context) {
 		return
 	}
 	ct := c.ContentType()
-	var notes []service.ImportedNote
+	var notes []ImportedNote
 	if strings.Contains(ct, "markdown") {
 		notes, err = parseMarkdownImport(body)
 	} else {
@@ -368,26 +367,26 @@ func (h *Handler) publish(c *gin.Context, noteID, typ string) {
 
 func (h *Handler) noteErr(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, service.ErrNoteNotFound):
+	case errors.Is(err, ErrNoteNotFound):
 		core.Fail(c, http.StatusNotFound, 2012, "note not found")
 	default:
 		core.Fail(c, http.StatusInternalServerError, 2013, err.Error())
 	}
 }
 
-func parseJSONImport(raw []byte) ([]service.ImportedNote, error) {
-	var arr []service.ImportedNote
+func parseJSONImport(raw []byte) ([]ImportedNote, error) {
+	var arr []ImportedNote
 	if err := json.Unmarshal(raw, &arr); err == nil {
 		return arr, nil
 	}
-	var one service.ImportedNote
+	var one ImportedNote
 	if err := json.Unmarshal(raw, &one); err == nil {
-		return []service.ImportedNote{one}, nil
+		return []ImportedNote{one}, nil
 	}
 	return nil, errors.New("expected JSON array or object of notes")
 }
 
-func parseMarkdownImport(raw []byte) ([]service.ImportedNote, error) {
+func parseMarkdownImport(raw []byte) ([]ImportedNote, error) {
 	txt := string(raw)
 	var tags []string
 	title, body := "", txt
@@ -405,7 +404,7 @@ func parseMarkdownImport(raw []byte) ([]service.ImportedNote, error) {
 	if title == "" {
 		title = "Imported note"
 	}
-	return []service.ImportedNote{{Title: title, Body: body, Tags: tags}}, nil
+	return []ImportedNote{{Title: title, Body: body, Tags: tags}}, nil
 }
 
 func frontmatter(s string) string {

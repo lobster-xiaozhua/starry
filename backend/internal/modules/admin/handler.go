@@ -14,10 +14,10 @@ import (
 
 type Handler struct {
 	settingsSvc *service.SettingsService
-	adminSvc    *service.AdminService
+	adminSvc    *AdminService
 }
 
-func New(settingsSvc *service.SettingsService, adminSvc *service.AdminService) *Handler {
+func New(settingsSvc *service.SettingsService, adminSvc *AdminService) *Handler {
 	return &Handler{settingsSvc: settingsSvc, adminSvc: adminSvc}
 }
 

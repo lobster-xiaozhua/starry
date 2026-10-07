@@ -7,12 +7,11 @@ import (
 
 	"starry/backend/internal/core"
 	"starry/backend/internal/middleware"
-	"starry/backend/internal/service"
 )
 
 // Register 装配并挂载管理模块路由。
 func Register(api *gin.RouterGroup, d *core.Deps) {
-	h := New(d.Settings, service.NewAdminService(d.DB, d.Redis))
+	h := New(d.Settings, NewService(d.DB, d.Redis))
 
 	g := api.Group("/admin", middleware.JWTAuth(d.Cfg.JWTSecret), middleware.RequireAdmin())
 	{

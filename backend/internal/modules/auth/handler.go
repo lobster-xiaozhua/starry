@@ -15,13 +15,13 @@ import (
 )
 
 type Handler struct {
-	auth           *service.AuthService
+	auth           *AuthService
 	settingsSvc    *service.SettingsService
 	captchaGen     *base64Captcha.Captcha
 	captchaEnabled func(ctx context.Context) bool
 }
 
-func New(auth *service.AuthService, settingsSvc *service.SettingsService, captchaGen *base64Captcha.Captcha) *Handler {
+func New(auth *AuthService, settingsSvc *service.SettingsService, captchaGen *base64Captcha.Captcha) *Handler {
 	h := &Handler{auth: auth, settingsSvc: settingsSvc, captchaGen: captchaGen}
 	h.captchaEnabled = func(ctx context.Context) bool {
 		settings, err := settingsSvc.Get(ctx)
