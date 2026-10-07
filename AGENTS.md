@@ -25,6 +25,8 @@ Run `npm install` at the repository root to install workspace dependencies. Use 
 
 Build the frontends with `npm run build` in either frontend package. Build the API with `go build ./cmd/server` from `backend/`. Run Go checks with `go test ./...`. The repository ships focused unit tests (e.g. `internal/config`, `internal/authpkg`); add regression coverage alongside the affected package when changing backend behavior.
 
+From the repository root, the whole quality gate is: `npm run check:modules` (fails if a business module imports another module or a non-infrastructure package), `npm run typecheck:services`, `npm run test:services` (Node service tests run with `node --import tsx --test`, no test framework dependency), and `npm run check:compose`. CI runs all of these plus `gofmt`/`go vet`/`go test -race` and the frontend build.
+
 ## Coding Style & Naming Conventions
 
 Use Go formatting via `gofmt` and standard Go naming (exported identifiers in `PascalCase`, local variables in `camelCase`). Keep backend packages organized by responsibility. Use TypeScript/React with two-space indentation, `PascalCase` component names, `camelCase` functions and hooks, and `*.tsx` for JSX-bearing files. Keep shared contracts in `packages/shared-api` rather than duplicating them in an app.

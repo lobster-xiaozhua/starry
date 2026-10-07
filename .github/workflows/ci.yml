@@ -38,6 +38,25 @@ jobs:
       - name: 业务模块禁止横向依赖
         run: bash backend/scripts/check-module-isolation.sh
 
+  services:
+    name: Node 服务类型检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: npm install
+        run: npm install --no-audit --no-fund
+      - name: typecheck agent
+        run: npm run typecheck --workspace starry-agent
+      - name: typecheck embed
+        run: npm run typecheck --workspace starry-embed
+      - name: test agent
+        run: npm test --workspace starry-agent
+      - name: test embed
+        run: npm test --workspace starry-embed
+
   frontend:
     runs-on: ubuntu-latest
     steps:
