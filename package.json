@@ -1,9 +1,14 @@
 {
-  "name": "login-system-workspace",
+  "name": "starry-workspace",
   "private": true,
   "workspaces": [
     "frontend",
     "packages/shared-api",
-    "services/agent"
-  ]
+    "services/agent",
+    "services/embed"
+  ],
+  "scripts": {
+    "check:modules": "bash backend/scripts/check-module-isolation.sh",
+    "check:compose": "docker compose config -q"
+  }
 }

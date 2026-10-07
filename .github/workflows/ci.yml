@@ -28,7 +28,15 @@ jobs:
       - name: go vet
         run: go vet ./...
       - name: go test
-        run: go test ./...
+        run: go test -race -count=1 ./...
+
+  architecture:
+    name: 架构守卫（模块隔离）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 业务模块禁止横向依赖
+        run: bash backend/scripts/check-module-isolation.sh
 
   frontend:
     runs-on: ubuntu-latest
@@ -37,12 +45,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Install system deps (sharp/libvips 源码编译)
+      - name: Install system deps (sharp/libvips)
         run: sudo apt-get update && sudo apt-get install -y libvips-dev build-essential
-      - name: npm install (排除 agent workspace)
-        # services/agent 的 @xenova/transformers 体量大且与前端无关，从 workspaces 剔除。
+      - name: npm install (排除 services 下的 Node 服务 workspace)
+        # services/agent、services/embed 与前端无关且依赖体积大，从 workspaces 剔除。
         run: |
-          sed -i '/"services\/agent"/d' package.json
+          sed -i '/"services\//d' package.json
           npm install --no-audit --no-fund
       - name: build frontend
         run: cd frontend && npm run build

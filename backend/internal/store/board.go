@@ -40,6 +40,15 @@ func (s *DB) ListBoardTree(userID uuid.UUID) ([]BoardView, error) {
 		return nil, err
 	}
 
+	return buildBoardTree(boards, columns, tasks), nil
+}
+
+// buildBoardTree 把平铺的看板/列/任务装配成前端视图树（各自已按 position 排序）。
+//
+// 抽成不依赖数据库的纯函数，是为了让这里唯一微妙的正确性要点可被测试：
+// **任何情况下都必须返回非 nil 切片**。Go 的 nil 切片会被 encoding/json 编码成
+// `null`，前端拿到 null 后执行 `col.tasks.length` 会直接抛错，曾导致看板整页白屏。
+func buildBoardTree(boards []model.Board, columns []model.BoardColumn, tasks []model.BoardTask) []BoardView {
 	taskByCol := map[uuid.UUID][]model.BoardTask{}
 	for _, t := range tasks {
 		taskByCol[t.ColumnID] = append(taskByCol[t.ColumnID], t)
@@ -63,7 +72,7 @@ func (s *DB) ListBoardTree(userID uuid.UUID) ([]BoardView, error) {
 		}
 		views = append(views, BoardView{Board: b, Columns: cols})
 	}
-	return views, nil
+	return views
 }
 
 // CreateBoard 创建看板并播种默认三列（事务内完成）。
