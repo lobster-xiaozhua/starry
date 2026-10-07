@@ -2,7 +2,8 @@ import { Button, Card, Form, Input, Typography, Result, App } from 'antd'
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { MailQuestion, Send, CheckCircle2 } from 'lucide-react'
-import { api, extractError } from '../../shared/api/client.ts'
+import { api } from '../../shared/api/client.ts'
+import { formatError } from '../../shared/lib/errors.ts'
 import BrandPanel from '../../shared/ui/BrandPanel.tsx'
 
 interface ForgotForm {
@@ -23,7 +24,7 @@ export default function ForgotPassword() {
         message.info(res.data.data.message)
       }
     } catch (err) {
-      message.error(extractError(err).message)
+      message.error(formatError(err))
     } finally {
       setLoading(false)
     }

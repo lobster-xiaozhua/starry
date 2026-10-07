@@ -27,7 +27,8 @@ import {
   UserX,
   UserCheck,
 } from 'lucide-react'
-import { api, extractError } from '../../shared/api/client.ts'
+import { api } from '../../shared/api/client.ts'
+import { formatError } from '../../shared/lib/errors.ts'
 
 interface AdminUserDetail {
   id: string
@@ -60,7 +61,7 @@ export default function AdminUserDetail() {
       .then((res) => setDetail(res.data.data))
       .catch((err) => {
         if (err.response?.status === 404) setNotFound(true)
-        message.error(extractError(err).message)
+        message.error(formatError(err))
       })
   }
 
@@ -85,7 +86,7 @@ export default function AdminUserDetail() {
         load()
       }
     } catch (err) {
-      message.error(extractError(err).message)
+      message.error(formatError(err))
     } finally {
       setActing(null)
     }

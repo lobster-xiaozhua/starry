@@ -2,7 +2,8 @@ import { Button, Card, Form, Input, App } from 'antd'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import { LogIn, KeyRound, RefreshCw } from 'lucide-react'
-import { api, extractError, tokenStore } from '../../shared/api/client.ts'
+import { api, tokenStore } from '../../shared/api/client.ts'
+import { formatError } from '../../shared/lib/errors.ts'
 import { useCaptcha } from './captcha.ts'
 import BrandPanel from '../../shared/ui/BrandPanel.tsx'
 
@@ -78,7 +79,7 @@ export default function Login() {
       message.error(res.data.message)
     } catch (err) {
       triggerShake()
-      message.error(extractError(err).message)
+      message.error(formatError(err))
     } finally {
       setLoading(false)
       void captcha.reload()

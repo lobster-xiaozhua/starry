@@ -52,9 +52,20 @@ export const tokenStore = {
 
 export const api = axios.create({ baseURL: '/api', timeout: 15000 })
 
+// 每个请求自带追踪 ID：后端会把它写进访问日志并回写到响应头。
+// 用户报错时只需提供一个追踪码，就能在服务端日志里定位到那一次请求。
+function newRequestId(): string {
+  const c = globalThis.crypto
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  return `rid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 api.interceptors.request.use((config) => {
   const token = tokenStore.access
   if (token) config.headers.Authorization = `Bearer ${token}`
+  if (!config.headers['X-Request-ID']) {
+    config.headers['X-Request-ID'] = newRequestId()
+  }
   return config
 })
 
@@ -137,14 +148,38 @@ api.interceptors.response.use(
       const pendingRedirect = new URLSearchParams(window.location.search).get('redirect_uri')
       window.location.href = pendingRedirect ? `/login?redirect_uri=${encodeURIComponent(pendingRedirect)}` : '/login'
     }
+    // 把服务端返回的追踪码挂到错误对象上，供 UI 展示、供用户报障。
+    const rid = error.response?.headers?.['x-request-id']
+    if (rid) {
+      ;(error as AxiosError & { requestId?: string }).requestId = String(rid)
+    }
     return Promise.reject(error)
   },
 )
 
-export function extractError(err: unknown): { message: string; fields?: Record<string, string> } {
-  if (axios.isAxiosError(err) && err.response?.data) {
-    const body = err.response.data as ApiResponse & { data?: { fields?: Record<string, string> } }
-    return { message: body.message || '请求失败', fields: body.data?.fields }
+export interface ExtractedError {
+  message: string
+  fields?: Record<string, string>
+  /** 服务端追踪码（来自 X-Request-ID），仅在服务端已返回时存在。 */
+  requestId?: string
+  /** HTTP 状态码；0 表示网络层失败（无响应）。 */
+  status?: number
+}
+
+export function extractError(err: unknown): ExtractedError {
+  if (axios.isAxiosError(err)) {
+    const status = err.response?.status ?? 0
+    const requestId =
+      (err as AxiosError & { requestId?: string }).requestId ||
+      (err.response?.headers?.['x-request-id'] as string | undefined) ||
+      undefined
+    const body = err.response?.data as
+      | (ApiResponse & { data?: { fields?: Record<string, string> } })
+      | undefined
+    if (body) {
+      return { message: body.message || '请求失败', fields: body.data?.fields, requestId, status }
+    }
+    return { message: '网络异常，请稍后重试', requestId, status }
   }
   return { message: '网络异常，请稍后重试' }
 }

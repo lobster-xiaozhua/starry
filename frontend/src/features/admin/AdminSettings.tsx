@@ -34,6 +34,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { api, extractError, tokenStore } from '../../shared/api/client.ts'
+import { formatError } from '../../shared/lib/errors.ts'
 import type { AuthSettings } from '../../shared/api/client.ts'
 
 interface AdminUserView {
@@ -76,7 +77,7 @@ export default function AdminSettings() {
         const res = await api.get('/admin/users', { params: keyword ? { search: keyword } : {} })
         setUsers(res.data.data.users ?? [])
       } catch (err) {
-        message.error(extractError(err).message)
+        message.error(formatError(err))
       }
     },
     [message],
@@ -171,7 +172,7 @@ export default function AdminSettings() {
         void loadUsers(search)
       }
     } catch (err) {
-      message.error(extractError(err).message)
+      message.error(formatError(err))
     }
   }
 
