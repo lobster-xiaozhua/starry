@@ -35,6 +35,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        # 注入构建版本到 /health 的 version 字段；无 git 信息时回退 dev。
+        VERSION: ${VERSION:-dev}
     environment:
       PORT: "8080"
       DB_HOST: postgres

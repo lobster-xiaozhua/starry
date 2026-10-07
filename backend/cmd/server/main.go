@@ -27,6 +27,10 @@ import (
 	"starry/backend/internal/store"
 )
 
+// version 由构建时注入（-ldflags -X main.version=...）；本地 go run 时为 dev。
+// 通过 /health 暴露，用于确认线上实际运行的构建。
+var version = "dev"
+
 // main 是组合根（composition root）：只负责构建基础设施与共享依赖，
 // 再由 modules.RegisterAll 装配各业务模块。业务路由不在本文件出现，
 // 新增/下线模块只需改动 modules 注册表与对应模块包，或直接用环境变量开关。
@@ -125,18 +129,19 @@ func main() {
 	r.Static("/uploads", cfg.UploadDir)
 
 	// 健康检查：供 docker compose / 负载均衡探活。pg 与 redis 任一不可用返回 503。
+	// 带上 version：滚动更新后一眼确认跑的是哪个构建，避免「以为发版了其实没发」。
 	r.GET("/health", func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 		defer cancel()
 		if err := db.Ping(); err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "degraded", "postgres": false, "error": err.Error()})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "degraded", "postgres": false, "version": version, "error": err.Error()})
 			return
 		}
 		if err := rds.Ping(ctx); err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "degraded", "redis": false, "error": err.Error()})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "degraded", "redis": false, "version": version, "error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "postgres": true, "redis": true})
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "postgres": true, "redis": true, "version": version})
 	})
 
 	// 用 http.Server 包裹 gin 引擎，设置超时并支持优雅关闭。

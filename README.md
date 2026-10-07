@@ -83,7 +83,10 @@ Compose 内置健康检查（后端 `/health` 探活 PostgreSQL+Redis、Agent `/
 | `REDIS_*` | Redis 连接（容器内用 `redis` 服务名） | — |
 | `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | Agent 模型配置 | Agnes 默认 |
 | `ADMIN_USERNAME` / `ADMIN_EMAIL` | 初始管理员账号 | `admin` / `admin@example.com` |
-| `ADMIN_PASSWORD` | 初始管理员密码（留空则随机生成并打印日志） | 留空 |
+| `ADMIN_PASSWORD` | 初始管理员密码（留空则随机生成并打印日志；`APP_ENV=production` 时留空会拒绝启动） | 留空 |
+| `APP_ENV` | `production` 启用配置 fail-fast 校验与 JSON 日志 | `production`（compose）/ `development` |
+| `LOG_LEVEL` | 日志级别，留空按环境推导 | 留空 |
+| `CAPTCHA_ENABLED` | 首次建库时写入的验证码开关，之后由管理端设置接管 | `true` |
 | `AGENT_INTERNAL_TOKEN` | 后端↔Agent 内部调用共享令牌（知识库向量化等内部端点鉴权） | `starry-internal` |
 | `FRONTEND_PORT` | 前端容器映射端口 | `80` |
 | `UPLOAD_DIR` | 附件上传目录（建议持久卷） | `uploads` |
@@ -128,6 +131,35 @@ Starry 的 Agent 已从「单一笔记工具助手」升级为**多 Agent 协作
 - **密钥**：不要把真实 `.env` 提交进仓库；`.env` 已在 `.gitignore` 中。生产请为 `JWT_SECRET` 与 `AGENT_INTERNAL_TOKEN` 设置强随机值。
 - **Agent 运行环境**：Agent 平台已实现多 agent 协作、长程任务与知识库 RAG。代码执行沙箱（直接运行用户代码）为独立安全项，默认未开启——如需「运行环境」能力，建议接入 gVisor/函数计算等隔离方案。
 
+## 备份与恢复
+
+```bash
+npm run backup                                  # 输出到 ./backups（可用 BACKUP_DIR / KEEP 调整）
+echo <库名> | npm run restore backups/db-<时间戳>.sql.gz
+```
+
+备份包含三件：数据库（`pg_dump`）、笔记附件卷 `uploads`、网盘卷 `drive`，三份共用同一时间戳。
+恢复会**清空 `public` schema 后重建**，因此需要手动输入库名二次确认。
+
+## 验证与门禁
+
+本地一键跑通全部静态检查：
+
+```bash
+npm run check:modules      # 架构守卫：业务模块不得横向依赖
+npm run typecheck:services # agent / embed 服务类型检查
+npm run test:services      # Node 服务测试（node --test，无需测试框架）
+npm run check:compose      # compose 配置校验
+cd backend && go test ./... && go vet ./...
+```
+
+跑起来之后再做一次端到端冒烟（覆盖登录、笔记、看板、网盘、知识库降级、CORS、限流等跨模块契约）：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.smoke.yml up -d --build postgres redis embed backend
+ADMIN_PASSWORD=<你的密码> npm run smoke
+```
+
 ## 近期质量改进
 
 - 合并云笔记至统一前端，单项目部署。
@@ -143,3 +175,7 @@ Starry 的 Agent 已从「单一笔记工具助手」升级为**多 Agent 协作
 - 长程任务端点（`POST /api/agent/tasks`、`/stream`）在 nginx 与 Vite 中正确代理至 Agent 服务。
 - 后端首组单元测试（知识库分块与向量序列化，表驱动）。
 - 前端按变更频率拆分 vendor 包，应用主包 1160 kB → 159 kB。
+- 后端改为模块化单体：8 个业务模块各自持有服务与迁移，可用 `MODULES_<NAME>_ENABLED=false` 单独停用；CI 用脚本守卫「模块之间不得横向依赖」。
+- 统一结构化日志（`slog`，生产输出 JSON）与全链路 `X-Request-ID`；访问日志对 query 中的 token/password 等凭据脱敏。
+- 限流计数下沉到 Redis，多副本部署时额度不再随实例数放大；计数不可用时限流 fail-open，由登录失败锁定兜底。
+- 两个 Node 服务纳入类型检查与 `node --test` 单元测试；新增 `scripts/smoke.sh` 端到端冒烟。
