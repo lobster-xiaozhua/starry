@@ -35,15 +35,27 @@ type UpdateNoteInput struct {
 }
 
 func (s *NotesService) Create(ctx context.Context, userID uuid.UUID, in CreateNoteInput) (*model.Note, error) {
+	var n *model.Note
+	err := s.db.Transaction(func(tx *store.DB) error {
+		var err error
+		n, err = s.createInTx(tx, userID, in)
+		return err
+	})
+	return n, err
+}
+
+// createInTx 在给定事务内完成「笔记行 + 标签关联」两步写入。两步任一失败都会随事务回滚，
+// 避免出现「笔记已建但标签关联失败」的孤儿笔记——这正是批量导入时需要原子保证的场景。
+func (s *NotesService) createInTx(tx *store.DB, userID uuid.UUID, in CreateNoteInput) (*model.Note, error) {
 	title := in.Title
 	if len([]rune(title)) == 0 {
 		title = "未命名笔记"
 	}
 	n := &model.Note{UserID: userID, Title: title, Body: in.Body}
-	if err := s.db.CreateNote(n); err != nil {
+	if err := tx.CreateNote(n); err != nil {
 		return nil, err
 	}
-	if err := s.db.LinkNoteTags(n.ID, userID, in.Tags); err != nil {
+	if err := tx.LinkNoteTags(n.ID, userID, in.Tags); err != nil {
 		return nil, err
 	}
 	return n, nil
@@ -75,13 +87,20 @@ func (s *NotesService) Update(ctx context.Context, userID, noteID uuid.UUID, in 
 	if in.Body != nil {
 		n.Body = *in.Body
 	}
-	if err := s.db.UpdateNote(&n); err != nil {
-		return nil, err
-	}
-	if in.Tags != nil {
-		if err := s.db.LinkNoteTags(noteID, userID, in.Tags); err != nil {
-			return nil, err
+	// 笔记正文与标签关联放进同一事务：标签关联失败时，不应留下「正文已更新但标签未变」的半吊子状态。
+	err = s.db.Transaction(func(tx *store.DB) error {
+		if err := tx.UpdateNote(&n); err != nil {
+			return err
 		}
+		if in.Tags != nil {
+			if err := tx.LinkNoteTags(noteID, userID, in.Tags); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return &n, nil
 }
@@ -167,16 +186,24 @@ func (s *NotesService) Import(ctx context.Context, userID uuid.UUID, notes []Imp
 				continue
 			}
 		}
-		created, err := s.Create(ctx, userID, CreateNoteInput{Title: n.Title, Body: n.Body, Tags: n.Tags})
+		// 逐行事务：笔记 + 标签 + 稳定 ID 要么全成、要么全滚。
+		// 以前这里若 LinkNoteTags 或 SaveNoteStableID 失败，已建好的笔记行会被留下成为孤儿，
+		// 且 ImportResult.Errors 与实际落库数据不一致；现在随事务回滚，二者严格一致。
+		err := s.db.Transaction(func(tx *store.DB) error {
+			created, err := s.createInTx(tx, userID, CreateNoteInput{Title: n.Title, Body: n.Body, Tags: n.Tags})
+			if err != nil {
+				return err
+			}
+			if n.ID != "" {
+				if err := tx.SaveNoteStableID(created.ID, userID, n.ID); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
 		if err != nil {
 			res.Errors = append(res.Errors, "row#"+itoa(i+1)+": "+err.Error())
 			continue
-		}
-		if n.ID != "" {
-			if err := s.db.SaveNoteStableID(created.ID, userID, n.ID); err != nil {
-				res.Errors = append(res.Errors, "row#"+itoa(i+1)+": stable id save failed")
-				continue
-			}
 		}
 		res.OK++
 	}

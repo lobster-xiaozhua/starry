@@ -25,6 +25,33 @@ func NewPostgres(dsn string) (*DB, error) {
 	return &DB{gorm: db}, nil
 }
 
+// NewFromGorm 用给定的 *gorm.DB 构造 *DB，便于在测试中注入内存库，
+// 或在需要时挂载其它 gorm 驱动。既有读写方法始终使用 DB.gorm 字段，
+// 因此任何 *gorm.DB（事务、内存库、副本）都能直接驱动它们。
+func NewFromGorm(g *gorm.DB) *DB {
+	return &DB{gorm: g}
+}
+
+// Gorm 返回底层 *gorm.DB，供测试与高级用法（如跨包直接计数/迁移）使用。
+func (s *DB) Gorm() *gorm.DB {
+	return s.gorm
+}
+
+// WithTx 返回一个把后续读写绑定到给定事务的 *DB，从而在事务内复用既有方法而不改其签名。
+func (s *DB) WithTx(tx *gorm.DB) *DB {
+	return &DB{gorm: tx}
+}
+
+// Transaction 在单个数据库事务中执行 fn；fn 返回错误则整体回滚。
+// fn 接收绑定到该事务的 *DB，可直接调用 CreateNote / LinkNoteTags / SaveNoteStableID 等既有方法。
+// 这是「笔记行 + 标签 + 稳定 ID」这类多步写入保持原子性的基础设施：
+// 任一子步骤失败都不应留下半吊子的孤儿记录。
+func (s *DB) Transaction(fn func(tx *DB) error) error {
+	return s.gorm.Transaction(func(tx *gorm.DB) error {
+		return fn(s.WithTx(tx))
+	})
+}
+
 // Ping 探活 PostgreSQL，供 /health 健康检查使用。
 func (s *DB) Ping() error {
 	var one int
