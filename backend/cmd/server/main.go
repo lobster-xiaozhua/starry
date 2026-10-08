@@ -118,9 +118,19 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
-	// 顺序：请求 ID → 恢复 → 访问日志 → CORS。
+	// 顺序：请求 ID → 恢复 → 访问日志 → 体积上限 → 安全响应头 → CORS。
 	// Recovery 放在日志之前，panic 才能被记录成一条完整访问日志而不是丢失。
-	r.Use(middleware.RequestID(), gin.Recovery(), middleware.RequestLogger("/health"), middleware.CORS(cfg.CorsOrigins))
+	// 体积上限刻意放在业务之前：越早拒绝超大请求，白花的内存与 CPU 越少。
+	r.Use(
+		middleware.RequestID(),
+		gin.Recovery(),
+		middleware.RequestLogger("/health"),
+		middleware.BodyLimit(cfg.MaxBodyBytes),
+		// HSTS 只在生产开启：一旦下发，该域名在 max-age 内的 http 访问会被浏览器强制跳转，
+		// 回滚极难；开发环境通常也没有 TLS，下发只会带来困惑。
+		middleware.SecurityHeaders(cfg.AppEnv == "production"),
+		middleware.CORS(cfg.CorsOrigins),
+	)
 
 	api := r.Group("/api")
 	// 全部业务路由由各模块自行注册；被停用的模块其路由完全不挂载。

@@ -35,6 +35,7 @@ type Config struct {
 	DriveQuotaBytes int64
 	LogLevel        string // debug | info | warn | error；为空时按环境推导
 	CaptchaEnabled  bool   // 首次初始化时写入的验证码开关；之后由管理端设置接管
+	MaxBodyBytes    int64  // 常规 JSON 接口的请求体上限；上传类接口在 handler 内按需抬高
 }
 
 func Load() *Config {
@@ -71,6 +72,7 @@ func Load() *Config {
 		DriveQuotaBytes: envOrInt("DRIVE_QUOTA_BYTES", 1<<30),
 		LogLevel:        envOr("LOG_LEVEL", ""),
 		CaptchaEnabled:  envOrBool("CAPTCHA_ENABLED", true),
+		MaxBodyBytes:    envOrInt("MAX_BODY_BYTES", 8<<20),
 	}
 }
 

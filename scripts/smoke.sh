@@ -180,7 +180,38 @@ evil="$(headers /api/auth/password-policy -H 'Origin: https://evil.example')"
 check "非白名单 Origin 不回写 CORS 头" bash -c "
   ! printf '%s' '$evil' | grep -iq 'access-control-allow-origin'"
 
-# ---- 12. 限流：auth:captcha 在窗口内应触发 429 ----
+# ---- 13. 安全响应头：光有 CORS 白名单不够，浏览器侧基线防护要由应用层兜住 ----
+#      （反向代理少配一段就整层失效，因此这里断言后端自身必须下发。）
+sec_headers="$(headers /health)"
+check "响应携带 X-Content-Type-Options: nosniff" bash -c "
+  printf '%s' '$sec_headers' | grep -iq 'x-content-type-options: nosniff'"
+check "响应携带 X-Frame-Options: DENY" bash -c "
+  printf '%s' '$sec_headers' | grep -iq 'x-frame-options: DENY'"
+
+# ---- 14. 请求体上限：超过额度必须返回 413，而不是「读完再用别的方式失败」 ----
+#      这里打 /notes/import 而不是普通创建接口：导入是自己声明额度（10MB）的大 body 入口，
+#      它必须显式判定超限并给机器可读的 413；普通 JSON 接口被绑定器吞成 400 属已知行为
+#      （见 middleware.BodyLimit 注释），不作为断言目标。
+#
+#      注意必须走临时文件 + --data-binary @file：单个命令行参数在 Linux 上受
+#      MAX_ARG_STRLEN（128KB）限制，把 11MB 直接拼进 curl -d 会让 execve 直接失败，
+#      curl 静默返回空串，用例就会以一种极具误导性的方式失败。
+tmp_body="$(mktemp)"
+head -c 11000000 /dev/zero | tr '\0' 'x' > "$tmp_body"
+oversize="$(http POST /api/notes/import '' --data-binary "@$tmp_body" "${AUTH[@]}")"
+rm -f "$tmp_body"
+oversize_code="${oversize%%$TAB*}"
+check "超过导入额度的请求返回 413" bash -c "[ '$oversize_code' = '413' ]"
+
+# ---- 15. 上传接口必须能抬高自己的额度（默认 8MB 覆盖不了网盘的 50MB）----
+tmp_file="$(mktemp)"
+printf 'starry smoke upload payload' > "$tmp_file"
+upload="$(http POST /api/drive/upload '' -F "file=@$tmp_file" "${AUTH[@]}")"
+rm -f "$tmp_file"
+check "网盘上传走通（已抬高的 body 额度未挡住合法文件）" bash -c "
+  [ \"${upload%%$TAB*}\" = '200' ]"
+
+# ---- 16. 限流：auth:captcha 在窗口内应触发 429 ----
 rate_limited=0
 for _ in $(seq 1 25); do
   code="$(http POST /api/auth/captcha '' | cut -f1)"

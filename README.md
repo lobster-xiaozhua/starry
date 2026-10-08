@@ -131,6 +131,7 @@ Starry 的 Agent 已从「单一笔记工具助手」升级为**多 Agent 协作
 - **密钥**：不要把真实 `.env` 提交进仓库；`.env` 已在 `.gitignore` 中。生产请为 `JWT_SECRET` 与 `AGENT_INTERNAL_TOKEN` 设置强随机值。
 - **Agent 运行环境**：Agent 平台已实现多 agent 协作、长程任务与知识库 RAG。代码执行沙箱（直接运行用户代码）为独立安全项，默认未开启——如需「运行环境」能力，建议接入 gVisor/函数计算等隔离方案。
 - **出网收敛**：所有对外请求只走一处受管控的出口（Go：`embed_client.go`；Node：`services/agent/src/http.ts`），统一带超时、体积上限与重试策略。URL 来自 LLM 或用户时（`web_fetch`）额外启用 SSRF 防护：拦截内网/链路本地/云元数据地址，DNS 预解析校验，重定向逐跳复检。
+- **请求入口治理**：全局请求体上限 `MAX_BODY_BYTES`（默认 8 MiB）保护常规 JSON 接口；上传/导入这类真正接收大 body 的入口用 `RaiseBodyLimit` 显式声明自己的额度（超限返回 413），杜绝「网盘能传 50MB、笔记正文却被同一个限额卡住」。应用自己下发 `nosniff` / `X-Frame-Options` / `Referrer-Policy` 等基线安全头，不把防线全押在反向代理配置上。
 
 ## 备份与恢复
 
@@ -181,3 +182,5 @@ ADMIN_PASSWORD=<你的密码> npm run smoke
 - 限流计数下沉到 Redis，多副本部署时额度不再随实例数放大；计数不可用时限流 fail-open，由登录失败锁定兜底。
 - 两个 Node 服务纳入类型检查与 `node --test` 单元测试；新增 `scripts/smoke.sh` 端到端冒烟。
 - 出网 HTTP 韧性：Go 侧知识库向量化改为共享连接池 + 分批 + 有界重试 + 返回条数契约校验（不再每次请求建池）；Node 侧新增统一出口 `http.ts`，为 `web_fetch` 这类「URL 由 LLM 决定」的调用补上 SSRF 防护、超时与响应体上限。
+- 请求入口治理：新增 `middleware.BodyLimit` / `RaiseBodyLimit` / `IsBodyTooLarge` 与安全响应头中间件；`core.Deps.Limiter` 改为接口，解开 `core ↔ middleware` 的循环依赖。笔记导入不再静默截断超限内容（改为明确 413）。
+- 配置损坏防线：`frontend/Dockerfile` 与 CI 曾用 `sed` 改写 `package.json`，留下尾随逗号、构建阶段才炸；改为 Node 重写，并新增 `scripts/check-json.js` 让这类问题秒级暴露。

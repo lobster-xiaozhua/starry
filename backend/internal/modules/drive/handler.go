@@ -11,9 +11,14 @@ import (
 
 	"starry/backend/internal/config"
 	"starry/backend/internal/core"
+	"starry/backend/internal/middleware"
 	"starry/backend/internal/model"
 	"starry/backend/internal/store"
 )
+
+// driveEnvelopeOverhead 是 multipart 封装本身的开销余量：boundary、字段名、
+// 以及 parentID 等伴生表单项都要算进请求体总量，否则恰好接近上限的文件会被误拒。
+const driveEnvelopeOverhead = 2 << 20
 
 // Handler 处理网盘的文件/文件夹管理，含配额校验与递归删除。
 type Handler struct {
@@ -130,12 +135,13 @@ func (h *Handler) Upload(c *gin.Context) {
 		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
-	// 在解析 multipart 之前限制请求体大小，避免超大文件先占满磁盘/内存再被拒。
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, h.cfg.DriveMaxBytes+2<<20)
+	// 在解析 multipart 之前抬高请求体配额到网盘允许的量级（multipart 边界本身也要占字节，故留出余量）。
+	// 用 RaiseBodyLimit 而不是自己再包一层 MaxBytesReader：后者是「叠加」而非「替换」，
+	// 外层的全局默认（8MB）会先于网盘自己的额度生效，大文件上传依旧会被拦。
+	middleware.RaiseBodyLimit(c, h.cfg.DriveMaxBytes+driveEnvelopeOverhead)
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
-		// MaxBytesReader 超限会返回 "request body too large"，统一映射为 413。
-		if strings.Contains(err.Error(), "request body too large") {
+		if middleware.IsBodyTooLarge(err) {
 			core.Fail(c, http.StatusRequestEntityTooLarge, 4002, "单文件超过大小上限")
 			return
 		}

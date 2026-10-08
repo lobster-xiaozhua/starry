@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"starry/backend/internal/core"
+	"starry/backend/internal/middleware"
 	"starry/backend/internal/model"
 	"starry/backend/internal/sse"
 	"starry/backend/internal/store"
@@ -269,9 +270,22 @@ func (h *Handler) ExportMarkdown(c *gin.Context) {
 	c.Data(http.StatusOK, "text/markdown; charset=utf-8", []byte(md))
 }
 
+// importMaxBytes 是导入接口的请求体上限，显著高于常规 JSON 接口（笔记正文 + 附带的富文本）。
+// 它与全局 MAX_BODY_BYTES 是两笔配额：后者保护常规接口，前者在 handler 内显式抬高。
+const importMaxBytes = 10 << 20
+
 func (h *Handler) Import(c *gin.Context) {
 	uid, _ := h.userID(c)
-	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 10<<20))
+	// 导入文件允许比常规 JSON 接口大，因此显式抬高请求体配额；
+	// 抬高失败说明链路上没有 BodyLimit，继续即可——此时由下面按实际读到的长度判定。
+	middleware.RaiseBodyLimit(c, importMaxBytes)
+	// 不再用 io.LimitReader 静默截断：超过上限会读取失败，必须明确告诉调用方，
+	// 否则用户导入 20MB 的笔记会「成功导入一半」而毫不知情。
+	body, err := io.ReadAll(c.Request.Body)
+	if middleware.IsBodyTooLarge(err) {
+		core.Fail(c, http.StatusRequestEntityTooLarge, 2010, "导入内容超过上限 "+middleware.HumanBytes(importMaxBytes))
+		return
+	}
 	if err != nil {
 		core.Fail(c, http.StatusBadRequest, 2010, "read body failed")
 		return

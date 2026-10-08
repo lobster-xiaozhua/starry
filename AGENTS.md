@@ -18,6 +18,13 @@ This is a small full-stack workspace:
 - **Logging**: never use the standard `log` package in `backend/`. Use `logx.L()` (or the package-level `slog`), initialized once by `logx.Setup(env, level)` in `main`. Production emits JSON to stdout; development emits text to stderr at debug level.
 - **Request tracing**: `middleware.RequestID()` must run first in the chain; access logs (`middleware.RequestLogger`) carry `request_id`, status, latency and a redacted path. Any new query parameter that carries a credential must be added to `sanitizePath`.
 - **Rate limiting**: endpoints that can be abused anonymously take `d.Limiter.Limit("<scope>", max, window)` from `core.Deps`. Do not call `middleware.RateLimit` in a module — its in-memory counter silently multiplies the quota by the replica count. The limiter fails open when the counter is unavailable, so brute-force defense still depends on the login lockout counters.
+- **Dependency direction**: infrastructure may import `core` (it reuses the unified response envelope), therefore `core` must **not** import any infrastructure package. `core.RateLimiter` exists as an interface for exactly this reason — `middleware.Limiter` satisfies it, and `core` never learns it exists.
+
+## Request Ingress
+
+- **Body size**: every request is bounded by `middleware.BodyLimit(cfg.MaxBodyBytes)` installed once in the composition root. An endpoint that legitimately accepts more (uploads, imports) calls `middleware.RaiseBodyLimit(c, n)` at the top of its handler with a comment naming why. Never wrap `http.MaxBytesReader` inside a handler — it stacks on top of the global limit instead of replacing it.
+- **Too-large detection**: use `middleware.IsBodyTooLarge(err)` (`errors.As` against `*http.MaxBytesError`), never a substring match on the error text. Endpoints whose contract is "accept large input" return 413 themselves; ordinary JSON handlers letting `ShouldBindJSON` surface the failure will report 400 — that is a known trade-off documented in `middleware/body.go`, not a bug to patch by special-casing.
+- **Response headers**: `middleware.SecurityHeaders` sets nosniff/frame-deny/referrer/permissions; HSTS is opt-in per environment. Adding a new credential-bearing query parameter also means adding it to `middleware.sanitizePath` so access logs stay redacted.
 
 ## Outbound HTTP
 
