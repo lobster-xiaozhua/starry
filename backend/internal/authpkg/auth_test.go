@@ -21,7 +21,7 @@ func TestHashAndCheckPassword(t *testing.T) {
 // 访问令牌应可在同一密钥下正确解析，且密钥不符时被拒绝。
 func TestAccessTokenRoundTrip(t *testing.T) {
 	secret := "test-secret"
-	access, _, err := IssueAccessToken(secret, "user-1", "admin", time.Minute)
+	access, _, err := IssueAccessToken(secret, "user-1", "alice", "admin", time.Minute)
 	if err != nil {
 		t.Fatalf("issue failed: %v", err)
 	}

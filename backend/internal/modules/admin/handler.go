@@ -15,10 +15,11 @@ import (
 type Handler struct {
 	settingsSvc *service.SettingsService
 	adminSvc    *AdminService
+	db          *store.DB
 }
 
-func New(settingsSvc *service.SettingsService, adminSvc *AdminService) *Handler {
-	return &Handler{settingsSvc: settingsSvc, adminSvc: adminSvc}
+func New(settingsSvc *service.SettingsService, adminSvc *AdminService, db *store.DB) *Handler {
+	return &Handler{settingsSvc: settingsSvc, adminSvc: adminSvc, db: db}
 }
 
 type updateSettingsRequest struct {
@@ -78,10 +79,12 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 	updated, issues, err := h.settingsSvc.Update(c.Request.Context(), in)
 	switch {
 	case err != nil:
+		h.recordAudit(c, "settings.update", "", "failed", err.Error())
 		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
 	case len(issues) > 0:
 		core.FailWithField(c, http.StatusBadRequest, 1008, "参数超出允许范围", issues)
 	default:
+		h.recordAudit(c, "settings.update", "", "success", "")
 		core.OK(c, updated)
 	}
 }
@@ -114,12 +117,15 @@ func (h *Handler) UnlockUser(c *gin.Context) {
 	userID := c.Param("id")
 	if err := h.adminSvc.UnlockUser(c.Request.Context(), userID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			h.recordAudit(c, "user.unlock", userID, "failed", "user not found")
 			core.Fail(c, http.StatusNotFound, 1011, "用户不存在")
 			return
 		}
+		h.recordAudit(c, "user.unlock", userID, "failed", err.Error())
 		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
 		return
 	}
+	h.recordAudit(c, "user.unlock", userID, "success", "")
 	core.OK(c, gin.H{"message": "已解除锁定并清零失败计数"})
 }
 
@@ -128,12 +134,15 @@ func (h *Handler) ForceResetPassword(c *gin.Context) {
 	token, err := h.adminSvc.ForceResetPassword(c.Request.Context(), userID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			h.recordAudit(c, "user.reset_password", userID, "failed", "user not found")
 			core.Fail(c, http.StatusNotFound, 1011, "用户不存在")
 			return
 		}
+		h.recordAudit(c, "user.reset_password", userID, "failed", err.Error())
 		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
 		return
 	}
+	h.recordAudit(c, "user.reset_password", userID, "success", "reset token issued")
 	core.OK(c, gin.H{"token": token, "message": "重置令牌已生成（30 分钟内有效，单次使用）"})
 }
 
@@ -141,33 +150,41 @@ func (h *Handler) RevokeSessions(c *gin.Context) {
 	userID := c.Param("id")
 	if err := h.adminSvc.RevokeSessions(c.Request.Context(), userID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			h.recordAudit(c, "user.revoke_sessions", userID, "failed", "user not found")
 			core.Fail(c, http.StatusNotFound, 1011, "用户不存在")
 			return
 		}
+		h.recordAudit(c, "user.revoke_sessions", userID, "failed", err.Error())
 		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
 		return
 	}
+	h.recordAudit(c, "user.revoke_sessions", userID, "success", "")
 	core.OK(c, gin.H{"message": "已吊销该用户全部在线会话"})
 }
 
 func (h *Handler) FreezeUser(c *gin.Context) {
 	userID := c.Param("id")
 	if userID == c.GetString("userID") {
+		h.recordAudit(c, "user.freeze", userID, "denied", "attempt to freeze self")
 		core.Fail(c, http.StatusBadRequest, 1009, "不能冻结当前登录的管理员账号")
 		return
 	}
 	if err := h.adminSvc.FreezeUser(c.Request.Context(), userID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			h.recordAudit(c, "user.freeze", userID, "failed", "user not found")
 			core.Fail(c, http.StatusNotFound, 1011, "用户不存在")
 			return
 		}
 		if errors.Is(err, service.ErrAdminUser) {
+			h.recordAudit(c, "user.freeze", userID, "denied", "admin account not freezable")
 			core.Fail(c, http.StatusBadRequest, 1009, "管理员账号不允许冻结")
 			return
 		}
+		h.recordAudit(c, "user.freeze", userID, "failed", err.Error())
 		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
 		return
 	}
+	h.recordAudit(c, "user.freeze", userID, "success", "")
 	core.OK(c, gin.H{"message": "账号已冻结，该用户全部会话已吊销"})
 }
 
@@ -175,11 +192,14 @@ func (h *Handler) UnfreezeUser(c *gin.Context) {
 	userID := c.Param("id")
 	if err := h.adminSvc.UnfreezeUser(c.Request.Context(), userID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			h.recordAudit(c, "user.unfreeze", userID, "failed", "user not found")
 			core.Fail(c, http.StatusNotFound, 1011, "用户不存在")
 			return
 		}
+		h.recordAudit(c, "user.unfreeze", userID, "failed", err.Error())
 		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
 		return
 	}
+	h.recordAudit(c, "user.unfreeze", userID, "success", "")
 	core.OK(c, gin.H{"message": "账号已解冻，可正常登录"})
 }

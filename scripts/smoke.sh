@@ -222,6 +222,21 @@ for _ in $(seq 1 25); do
 done
 check "匿名端点触发限流（429）" bash -c "[ '$rate_limited' = '1' ]"
 
+# ---- 17. 管理操作审计：越权冻结自己应被拒绝，且这次尝试必须落审计 ----
+me_resp="$(http GET /api/auth/me '' "${AUTH[@]}")"
+admin_id="$(printf '%s' "${me_resp#*$TAB}" | jget '.data.user.id')"
+denied="$(http POST "/api/admin/users/$admin_id/freeze" '' "${AUTH[@]}")"
+denied_code="${denied%%$TAB*}"
+check "管理员冻结自己被拒绝（400）" bash -c "[ '$denied_code' = '400' ]"
+
+# ---- 18. 审计日志可被查询，并包含上述越权尝试 ----
+audit="$(http GET /api/admin/audit '' "${AUTH[@]}")"
+audit_total="$(printf '%s' "${audit#*$TAB}" | jget '.data.total')"
+check "审计日志接口返回 200 且有记录" bash -c "
+  [ \"${audit%%$TAB*}\" = '200' ] && [ \"${audit_total:-0}\" -ge 1 ]"
+check "审计记录包含越权冻结（action=user.freeze, outcome=denied）" bash -c "
+  a='${audit#*$TAB}'; printf '%s' \"\$a\" | grep -q 'user.freeze' && printf '%s' \"\$a\" | grep -q 'denied'"
+
 echo
 echo "通过 $PASS，失败 $FAIL"
 if [ "$FAIL" -ne 0 ]; then

@@ -2,7 +2,6 @@ package chat
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 
 	"starry/backend/internal/core"
 	"starry/backend/internal/model"
+	"starry/backend/internal/request"
 	"starry/backend/internal/store"
 )
 
@@ -157,16 +157,8 @@ func (h *Handler) ListMessages(c *gin.Context) {
 		return
 	}
 	// 默认取最近 50 条并压缩，避免一次性回放整段对话导致 token 爆炸。
-	// 裁剪与压缩均在 Go 数据层完成；摘要逻辑留在 Node。
-	limit := 50
-	if v := c.Query("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			if n > 500 {
-				n = 500
-			}
-			limit = n
-		}
-	}
+	// 裁剪与压缩均在 Go 数据层完成；摘要逻辑留在 Node。上限 500 防止单次回放拖垮内存。
+	limit := request.IntParam(c, "limit", 50, 1, 500)
 	compress := c.DefaultQuery("compress", "1")
 	doCompress := compress == "1" || compress == "true"
 

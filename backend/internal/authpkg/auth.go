@@ -13,8 +13,9 @@ import (
 )
 
 type Claims struct {
-	UserID string `json:"uid"`
-	Role   string `json:"role"`
+	UserID   string `json:"uid"`
+	Role     string `json:"role"`
+	Username string `json:"uname"`
 	jwt.RegisteredClaims
 }
 
@@ -32,11 +33,12 @@ func CheckPassword(hash, plain string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(plain)) == nil
 }
 
-func IssueAccessToken(secret, userID, role string, ttl time.Duration) (string, string, error) {
+func IssueAccessToken(secret, userID, username, role string, ttl time.Duration) (string, string, error) {
 	jti := uuid.NewString()
 	claims := Claims{
-		UserID: userID,
-		Role:   role,
+		UserID:   userID,
+		Username: username,
+		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        jti,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),

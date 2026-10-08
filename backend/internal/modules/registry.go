@@ -46,7 +46,7 @@ type Module struct {
 func All() []Module {
 	return []Module{
 		{Name: "auth", Register: auth.Register, Migrate: auth.Migrate},
-		{Name: "admin", Register: admin.Register},
+		{Name: "admin", Register: admin.Register, Migrate: admin.Migrate},
 		{Name: "knowledge", Register: knowledge.Register, Migrate: knowledge.Migrate},
 		{Name: "notes", Register: notes.Register, Migrate: notes.Migrate},
 		{Name: "chat", Register: chat.Register, Migrate: chat.Migrate},

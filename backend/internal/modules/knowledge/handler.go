@@ -13,6 +13,7 @@ import (
 	"starry/backend/internal/config"
 	"starry/backend/internal/core"
 	"starry/backend/internal/model"
+	"starry/backend/internal/request"
 	"starry/backend/internal/store"
 )
 
@@ -139,12 +140,7 @@ func (h *Handler) Search(c *gin.Context) {
 		core.Fail(c, http.StatusBadRequest, 3008, "q 不能为空")
 		return
 	}
-	k := 5
-	if v := c.Query("k"); v != "" {
-		if n, err := parseInt(v); err == nil && n > 0 {
-			k = n
-		}
-	}
+	k := request.IntParam(c, "k", 5, 1, 50)
 	embeddings, err := h.embedder.Embed(c.Request.Context(), []string{q})
 	if err != nil {
 		// 与入库保持一致的语义：检索依赖向量化，失败同样是「下游不可用」。
@@ -251,8 +247,4 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-}
-
-func parseInt(s string) (int, error) {
-	return strconv.Atoi(s)
 }

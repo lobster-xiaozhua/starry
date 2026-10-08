@@ -14,6 +14,7 @@ import (
 	"starry/backend/internal/core"
 	"starry/backend/internal/middleware"
 	"starry/backend/internal/model"
+	"starry/backend/internal/request"
 	"starry/backend/internal/sse"
 	"starry/backend/internal/store"
 )
@@ -47,8 +48,8 @@ func (h *Handler) List(c *gin.Context) {
 		core.Fail(c, http.StatusBadRequest, 2003, "invalid user")
 		return
 	}
-	page, _ := strconv.Atoi(c.Query("page"))
-	size, _ := strconv.Atoi(c.Query("size"))
+	page := request.Page(c)
+	size := request.Size(c, 20, 100)
 	if c.Query("q") != "" {
 		notes, total, err := h.svc.Search(c.Request.Context(), uid, c.Query("q"), page, size)
 		if err != nil {
@@ -67,8 +68,13 @@ func (h *Handler) List(c *gin.Context) {
 	if v := c.Query("tag"); v != "" {
 		tags = strings.Split(v, ",")
 	}
+	sortSQL := request.Sort(c, map[string]string{
+		"updated_at": "updated_at",
+		"created_at": "created_at",
+		"title":      "title",
+	}, "updated_at DESC")
 	notes, total, err := h.svc.List(c.Request.Context(), store.NoteListQuery{
-		UserID: uid, Tags: tags, Archived: arch, Page: page, Size: size,
+		UserID: uid, Tags: tags, Archived: arch, Page: page, Size: size, Sort: sortSQL,
 	})
 	if err != nil {
 		core.Fail(c, http.StatusInternalServerError, 2004, err.Error())

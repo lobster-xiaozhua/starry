@@ -86,7 +86,7 @@ func (s *AuthService) Login(ctx context.Context, username, password, captchaID, 
 	if err := s.rds.ClearFailure(ctx, user.ID.String()); err != nil {
 		return "", "", nil, err
 	}
-	accessToken, _, err := authpkg.IssueAccessToken(s.jwtSecret, user.ID.String(), user.Role, time.Duration(settings.AccessTokenMinutes)*time.Minute)
+	accessToken, _, err := authpkg.IssueAccessToken(s.jwtSecret, user.ID.String(), user.Username, user.Role, time.Duration(settings.AccessTokenMinutes)*time.Minute)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -232,7 +232,7 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (string,
 	if err != nil {
 		return "", err
 	}
-	accessToken, _, err := authpkg.IssueAccessToken(s.jwtSecret, user.ID.String(), user.Role, time.Duration(settings.AccessTokenMinutes)*time.Minute)
+	accessToken, _, err := authpkg.IssueAccessToken(s.jwtSecret, user.ID.String(), user.Username, user.Role, time.Duration(settings.AccessTokenMinutes)*time.Minute)
 	if err != nil {
 		return "", err
 	}

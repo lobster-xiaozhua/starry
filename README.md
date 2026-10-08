@@ -132,6 +132,7 @@ Starry 的 Agent 已从「单一笔记工具助手」升级为**多 Agent 协作
 - **Agent 运行环境**：Agent 平台已实现多 agent 协作、长程任务与知识库 RAG。代码执行沙箱（直接运行用户代码）为独立安全项，默认未开启——如需「运行环境」能力，建议接入 gVisor/函数计算等隔离方案。
 - **出网收敛**：所有对外请求只走一处受管控的出口（Go：`embed_client.go`；Node：`services/agent/src/http.ts`），统一带超时、体积上限与重试策略。URL 来自 LLM 或用户时（`web_fetch`）额外启用 SSRF 防护：拦截内网/链路本地/云元数据地址，DNS 预解析校验，重定向逐跳复检。
 - **请求入口治理**：全局请求体上限 `MAX_BODY_BYTES`（默认 8 MiB）保护常规 JSON 接口；上传/导入这类真正接收大 body 的入口用 `RaiseBodyLimit` 显式声明自己的额度（超限返回 413），杜绝「网盘能传 50MB、笔记正文却被同一个限额卡住」。应用自己下发 `nosniff` / `X-Frame-Options` / `Referrer-Policy` 等基线安全头，不把防线全押在反向代理配置上。
+- **查询参数治理与审计**：列表接口的 `page` / `size` / `limit` / `k` 等参数统一经 `internal/request` 包钳制（缺省/非法回落确定值，数量参数带硬上限），`order by` 走白名单杜绝 SQL 注入。管理端的冻结/解冻/解锁/强制改密/吊销会话/修改安全设置等操作全部写入审计日志（`/api/admin/audit`），记录操作人、目标、结果（success/failed/denied）与来源 IP/追踪码——JWT 新增 `username` 声明使审计条目自带可读身份。
 
 ## 备份与恢复
 
@@ -184,3 +185,4 @@ ADMIN_PASSWORD=<你的密码> npm run smoke
 - 出网 HTTP 韧性：Go 侧知识库向量化改为共享连接池 + 分批 + 有界重试 + 返回条数契约校验（不再每次请求建池）；Node 侧新增统一出口 `http.ts`，为 `web_fetch` 这类「URL 由 LLM 决定」的调用补上 SSRF 防护、超时与响应体上限。
 - 请求入口治理：新增 `middleware.BodyLimit` / `RaiseBodyLimit` / `IsBodyTooLarge` 与安全响应头中间件；`core.Deps.Limiter` 改为接口，解开 `core ↔ middleware` 的循环依赖。笔记导入不再静默截断超限内容（改为明确 413）。
 - 配置损坏防线：`frontend/Dockerfile` 与 CI 曾用 `sed` 改写 `package.json`，留下尾随逗号、构建阶段才炸；改为 Node 重写，并新增 `scripts/check-json.js` 让这类问题秒级暴露。
+- 列表查询与排序治理：新增 `internal/request` 包（分页 clamp + 数量上限 + order-by 白名单），笔记/对话/知识检索等读接口统一收敛；管理端补齐操作审计日志，JWT 增加 `username` 声明。

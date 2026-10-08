@@ -59,7 +59,7 @@ func TestJWTAuth(t *testing.T) {
 	r := gin.New()
 	r.Use(JWTAuth(secret))
 	r.GET("/probe", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"userID": c.GetString("userID"), "role": c.GetString("role")})
+		c.JSON(http.StatusOK, gin.H{"userID": c.GetString("userID"), "role": c.GetString("role"), "username": c.GetString("username")})
 	})
 
 	if w := get(r, "", nil, ""); w.Code != http.StatusUnauthorized {
@@ -69,7 +69,7 @@ func TestJWTAuth(t *testing.T) {
 		t.Fatalf("无效令牌应 401，实际 %d", w.Code)
 	}
 
-	token, _, err := authpkg.IssueAccessToken(secret, "user-123", "admin", time.Minute)
+	token, _, err := authpkg.IssueAccessToken(secret, "user-123", "tester", "admin", time.Minute)
 	if err != nil {
 		t.Fatalf("签发令牌失败: %v", err)
 	}
@@ -80,6 +80,9 @@ func TestJWTAuth(t *testing.T) {
 	}
 	if !contains(w.Body.String(), "user-123") || !contains(w.Body.String(), "admin") {
 		t.Fatalf("应把 userID/role 注入上下文，实际 %s", w.Body.String())
+	}
+	if !contains(w.Body.String(), "tester") {
+		t.Fatalf("应将 username 注入上下文（供审计记录可读身份），实际 %s", w.Body.String())
 	}
 	// query 传参（SSE 通道）
 	if w := get(r, "", nil, "?token="+token); w.Code != http.StatusOK {

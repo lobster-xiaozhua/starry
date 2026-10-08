@@ -22,6 +22,7 @@ MODULE_PREFIX="starry/backend/internal/modules/"
 ALLOWED_PREFIXES=(
   "starry/backend/internal/core"
   "starry/backend/internal/middleware"
+  "starry/backend/internal/request"
   "starry/backend/internal/model"
   "starry/backend/internal/store"
   "starry/backend/internal/config"

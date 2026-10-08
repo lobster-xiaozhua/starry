@@ -17,6 +17,7 @@ type NoteListQuery struct {
 	Archived *bool
 	Page     int
 	Size     int
+	Sort     string // 已由 request.Sort 白名单化，安全可直拼 ORDER BY；空则回落默认
 }
 
 func (s *DB) CreateNote(n *model.Note) error {
@@ -109,7 +110,11 @@ func (s *DB) ListNotes(q NoteListQuery) ([]model.NoteWithTags, int64, error) {
 	}
 
 	var notes []model.Note
-	err := base.Order("updated_at DESC").
+	orderBy := q.Sort
+	if orderBy == "" {
+		orderBy = "updated_at DESC"
+	}
+	err := base.Order(orderBy).
 		Offset((page - 1) * size).Limit(size).
 		Find(&notes).Error
 	if err != nil {
