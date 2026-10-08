@@ -1,6 +1,8 @@
 package store
 
 import (
+	"errors"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
@@ -20,6 +22,43 @@ type BoardView struct {
 type ColumnView struct {
 	model.BoardColumn
 	Tasks []model.BoardTask `json:"tasks"`
+}
+
+// BoardOwnedBy 判断看板是否存在且归属该用户（软删除的看板视为不存在）。
+// 供创建列/任务前的归属校验使用：外键约束上线后，无效引用会从「静默孤儿」
+// 变成 500，必须在写入路径把住关。
+func (s *DB) BoardOwnedBy(userID, boardID uuid.UUID) (bool, error) {
+	var count int64
+	err := s.gorm.Model(&model.Board{}).
+		Where("id = ? AND user_id = ?", boardID, userID).
+		Count(&count).Error
+	return count > 0, err
+}
+
+// GetBoardColumn 取单个列；不存在（含已软删）返回 (nil, nil)。
+func (s *DB) GetBoardColumn(userID, colID uuid.UUID) (*model.BoardColumn, error) {
+	var col model.BoardColumn
+	err := s.gorm.Where("id = ? AND user_id = ?", colID, userID).First(&col).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &col, nil
+}
+
+// GetBoardTask 取单个任务卡片；不存在（含已软删）返回 (nil, nil)。
+func (s *DB) GetBoardTask(userID, taskID uuid.UUID) (*model.BoardTask, error) {
+	var t model.BoardTask
+	err := s.gorm.Where("id = ? AND user_id = ?", taskID, userID).First(&t).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
 }
 
 // ListBoardTree 返回某用户的全部看板，并装配好列与任务（按 position 排序）。

@@ -149,6 +149,17 @@ func (h *Handler) CreateColumn(c *gin.Context) {
 		core.Fail(c, http.StatusBadRequest, 4001, "title required")
 		return
 	}
+	// 归属校验：看板不存在/不属于该用户时拒绝，否则列会成为跨用户孤儿
+	//（外键上线后这类写入会直接 500）。
+	owned, err := h.db.BoardOwnedBy(uid, boardID)
+	if err != nil {
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		return
+	}
+	if !owned {
+		core.Fail(c, http.StatusNotFound, 4040, "board not found")
+		return
+	}
 	col, err := h.db.CreateColumn(uid, boardID, strings.TrimSpace(body.Title))
 	if err != nil {
 		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
@@ -228,6 +239,25 @@ func (h *Handler) CreateTask(c *gin.Context) {
 		core.Fail(c, http.StatusBadRequest, 4002, "invalid columnId")
 		return
 	}
+	// 归属校验：看板必须属于该用户；目标列必须存在、属于该用户且挂在该看板下。
+	owned, oerr := h.db.BoardOwnedBy(uid, boardID)
+	if oerr != nil {
+		core.Fail(c, http.StatusInternalServerError, 5000, oerr.Error())
+		return
+	}
+	if !owned {
+		core.Fail(c, http.StatusNotFound, 4040, "board not found")
+		return
+	}
+	col, cerr := h.db.GetBoardColumn(uid, colID)
+	if cerr != nil {
+		core.Fail(c, http.StatusInternalServerError, 5000, cerr.Error())
+		return
+	}
+	if col == nil || col.BoardID != boardID {
+		core.Fail(c, http.StatusBadRequest, 4002, "invalid columnId")
+		return
+	}
 	priority := body.Priority
 	if priority == "" {
 		priority = "medium"
@@ -301,6 +331,34 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 		if cid, cerr := uuid.Parse(*body.ColumnID); cerr == nil {
 			patch["column_id"] = cid
 		}
+	}
+	// 移动任务到其他列时的归属校验：目标列必须存在且属于该用户，且与任务同板；
+	// 通过校验后同步改写 board_id，保证任务始终与列挂在同一块看板下。
+	if cid, moving := patch["column_id"]; moving {
+		colID := cid.(uuid.UUID)
+		col, err := h.db.GetBoardColumn(uid, colID)
+		if err != nil {
+			core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
+			return
+		}
+		if col == nil {
+			core.Fail(c, http.StatusBadRequest, 4002, "invalid columnId")
+			return
+		}
+		task, err := h.db.GetBoardTask(uid, taskID)
+		if err != nil {
+			core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
+			return
+		}
+		if task == nil {
+			core.Fail(c, http.StatusNotFound, 4040, "task not found")
+			return
+		}
+		if col.BoardID != task.BoardID {
+			core.Fail(c, http.StatusBadRequest, 4002, "column belongs to another board")
+			return
+		}
+		patch["board_id"] = col.BoardID
 	}
 	if err := h.db.UpdateTask(uid, taskID, patch); err != nil {
 		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())

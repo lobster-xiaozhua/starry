@@ -137,3 +137,266 @@ func (s *DB) PurgeUserData(ctx context.Context, userID uuid.UUID) error {
 func (s *DB) DeleteUser(userID uuid.UUID) error {
 	return s.gorm.Unscoped().Where("id = ?", userID).Delete(&model.User{}).Error
 }
+
+// ---- 数据完整性阶段 2：历史孤儿清理 + 真实外键约束 ----
+
+// fkSpec 描述一条外键约束：table.column → refTable.refColumn，一律 ON DELETE CASCADE。
+type fkSpec struct {
+	table     string
+	column    string
+	refTable  string
+	refColumn string
+}
+
+// foreignKeySpecs 是全库外键约束清单（26 条）。命名规则 fk_<table>_<column>：
+// 幂等创建时按名查 information_schema，已存在即跳过，重启零开销。
+//
+// 设计取向：
+//   - 用户级归属（*_user_id → users.id）16 条：用户行消失即一切业务行级联消失，
+//     与 PurgeUserData 的显式级联互为兜底——后者保证磁盘回收，前者保证无漏网之行。
+//   - 实体从属 10 条：子表/连接表行离开父实体即无意义。attachments.note_id 与
+//     drive_files.parent_id 允许 NULL（根目录/未挂笔记是合法状态），FK 自动放行 NULL。
+//   - 全部 CASCADE 而非 RESTRICT：业务删除路径已各自先清子行（DeleteKnowledgeDoc、
+//     DeleteConversation、deleteNode 等），CASCADE 只是防御网，不会掩盖顺序错误。
+var foreignKeySpecs = []fkSpec{
+	// 用户级归属
+	{"notes", "user_id", "users", "id"},
+	{"tags", "user_id", "users", "id"},
+	{"note_stable_ids", "user_id", "users", "id"},
+	{"attachments", "user_id", "users", "id"},
+	{"boards", "user_id", "users", "id"},
+	{"board_columns", "user_id", "users", "id"},
+	{"board_tasks", "user_id", "users", "id"},
+	{"knowledge_docs", "user_id", "users", "id"},
+	{"knowledge_chunks", "user_id", "users", "id"},
+	{"vault_keys", "user_id", "users", "id"},
+	{"vault_items", "user_id", "users", "id"},
+	{"conversations", "user_id", "users", "id"},
+	{"messages", "user_id", "users", "id"},
+	{"agent_tasks", "user_id", "users", "id"},
+	{"drive_files", "user_id", "users", "id"},
+	{"drive_quota", "user_id", "users", "id"},
+	// 实体从属
+	{"note_tags", "note_id", "notes", "id"},
+	{"note_tags", "tag_id", "tags", "id"},
+	{"note_stable_ids", "note_id", "notes", "id"},
+	{"attachments", "note_id", "notes", "id"},
+	{"drive_files", "parent_id", "drive_files", "id"},
+	{"board_columns", "board_id", "boards", "id"},
+	{"board_tasks", "board_id", "boards", "id"},
+	{"board_tasks", "column_id", "board_columns", "id"},
+	{"knowledge_chunks", "doc_id", "knowledge_docs", "id"},
+	{"messages", "conversation_id", "conversations", "id"},
+}
+
+// EnsureForeignKeys 幂等地创建全库外键约束（清单见 foreignKeySpecs）。
+//
+// 幂等策略：先查 information_schema.table_constraints，按 fk_<table>_<column>
+// 命名约定的外键已存在即跳过——重启零成本，无 DDL 抖动。
+//
+// SQLite 不支持 ALTER TABLE ADD CONSTRAINT；单元测试环境（sqlite）直接跳过，
+// 级联语义由 store 层显式清理逻辑保证，真实约束由 Postgres 冒烟环境验证。
+func (s *DB) EnsureForeignKeys() error {
+	if s.gorm.Dialector.Name() != "postgres" {
+		return nil
+	}
+	for _, spec := range foreignKeySpecs {
+		name := fmt.Sprintf("fk_%s_%s", spec.table, spec.column)
+		var count int64
+		if err := s.gorm.Raw(
+			`SELECT COUNT(1) FROM information_schema.table_constraints
+			 WHERE constraint_type = 'FOREIGN KEY' AND constraint_name = ? AND table_name = ?`,
+			name, spec.table,
+		).Scan(&count).Error; err != nil {
+			return fmt.Errorf("check fk %s: %w", name, err)
+		}
+		if count > 0 {
+			continue
+		}
+		stmt := fmt.Sprintf(
+			"ALTER TABLE %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s (%s) ON DELETE CASCADE",
+			spec.table, name, spec.column, spec.refTable, spec.refColumn,
+		)
+		if err := s.gorm.Exec(stmt).Error; err != nil {
+			return fmt.Errorf("add fk %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// CleanupOrphanRows 一次性清理历史孤儿数据，为 EnsureForeignKeys 扫清障碍
+// （外键无法建立在含孤儿行的表上）。清理分三层，均先收集再删除：
+//
+//  1. 用户级孤儿：user_id 指向已不存在的用户（16 张带 user_id 的表）。
+//     其中网盘文件与附件行带磁盘副作用，先删磁盘文件再删行。
+//  2. 网盘父目录断链：parent_id 指向不存在的行。断链节点的全部后代同样是孤儿，
+//     用递归 CTE 一次收集（Postgres 与 SQLite 均支持）。
+//  3. 实体从属孤儿：attachments / note_stable_ids / note_tags 中指向不存在
+//     note 或 tag 的行（含第 1 步删除用户级 notes/tags 后新暴露的）。
+//
+// 层次顺序刻意为「用户级 → 父断链 → 从属」：前一步的删除让后一步收集到
+// 更完整的孤儿集合。与外键语义对齐：引用列为 NULL 的行 FK 放行，此处同样
+// 保留（不可归属的数据不自动删除）。
+//
+// 必须在管理员账号播种（seedAdmin）之后调用：users 为空意味着任何行都无法
+// 归属，正常数据会被误判为孤儿。启动顺序由 main 保证。
+// 磁盘删除失败仅告警不回滚：宁可磁盘多留一个无主文件，也不让孤儿行清理半途而废。
+func (s *DB) CleanupOrphanRows() (int64, error) {
+	var total int64
+
+	// ---- 1) 用户级孤儿：网盘文件行（磁盘副作用） ----
+	n, err := s.cleanupOrphanDriveFiles(
+		"drive_files.user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = drive_files.user_id)")
+	if err != nil {
+		return total, fmt.Errorf("user-orphan drive files: %w", err)
+	}
+	total += n
+
+	// ---- 2) 用户级孤儿：附件行（磁盘副作用） ----
+	n, err = s.cleanupOrphanAttachments(
+		"attachments.user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = attachments.user_id)")
+	if err != nil {
+		return total, fmt.Errorf("user-orphan attachments: %w", err)
+	}
+	total += n
+
+	// ---- 3) 用户级孤儿：其余 14 张表（无磁盘副作用） ----
+	for _, m := range []any{
+		&model.DriveQuota{}, &model.NoteStableID{}, &model.Tag{}, &model.Note{},
+		&model.BoardTask{}, &model.BoardColumn{}, &model.Board{},
+		&model.KnowledgeChunk{}, &model.KnowledgeDoc{},
+		&model.VaultItem{}, &model.VaultKey{},
+		&model.Message{}, &model.AgentTask{}, &model.Conversation{},
+	} {
+		res := s.gorm.Unscoped().
+			Where("user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = user_id)").
+			Delete(m)
+		if res.Error != nil {
+			return total, fmt.Errorf("user-orphan rows in %T: %w", m, res.Error)
+		}
+		total += res.RowsAffected
+	}
+
+	// ---- 4) 网盘父目录断链（递归 CTE，含断链节点的全部后代） ----
+	// 放在用户级清理之后：用户级孤儿行删除后，其子行在此成为直接孤儿并被一并收集。
+	var brokenDrive []model.DriveFile
+	if err := s.gorm.Raw(`
+		WITH RECURSIVE broken(id) AS (
+			SELECT f.id FROM drive_files f
+			WHERE f.parent_id IS NOT NULL
+			  AND NOT EXISTS (SELECT 1 FROM drive_files p WHERE p.id = f.parent_id)
+			UNION ALL
+			SELECT c.id FROM drive_files c JOIN broken b ON c.parent_id = b.id
+		)
+		SELECT d.* FROM drive_files d JOIN broken b ON d.id = b.id
+	`).Scan(&brokenDrive).Error; err != nil {
+		return total, fmt.Errorf("collect broken drive parents: %w", err)
+	}
+	if len(brokenDrive) > 0 {
+		for _, f := range brokenDrive {
+			if !f.IsDir && f.StoredName != "" && s.Drive != nil {
+				if err := s.Drive.Delete(f.UserID, f.StoredName); err != nil {
+					slog.Warn("cleanup: orphan drive disk delete failed", "file", f.StoredName, "error", err)
+				}
+			}
+		}
+		ids := make([]uuid.UUID, 0, len(brokenDrive))
+		for _, f := range brokenDrive {
+			ids = append(ids, f.ID)
+		}
+		del, err := s.deleteUnscopedByIDs(&model.DriveFile{}, ids)
+		if err != nil {
+			return total, fmt.Errorf("delete broken drive files: %w", err)
+		}
+		total += del
+	}
+
+	// ---- 5) 附件 note 断链（磁盘副作用；含第 3 步删 notes 后新暴露的） ----
+	n, err = s.cleanupOrphanAttachments(
+		"attachments.note_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM notes n WHERE n.id = attachments.note_id)")
+	if err != nil {
+		return total, fmt.Errorf("note-orphan attachments: %w", err)
+	}
+	total += n
+
+	// ---- 6) note_stable_ids 的 note 断链 ----
+	res := s.gorm.Unscoped().Where(
+		"note_stable_ids.note_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM notes n WHERE n.id = note_stable_ids.note_id)",
+	).Delete(&model.NoteStableID{})
+	if res.Error != nil {
+		return total, fmt.Errorf("orphan note_stable_ids: %w", res.Error)
+	}
+	total += res.RowsAffected
+
+	// ---- 7) note_tags 的 note/tag 断链（连接表无 user_id，靠引用完整性清理） ----
+	res = s.gorm.Unscoped().Where(
+		"(note_tags.note_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM notes n WHERE n.id = note_tags.note_id)) OR " +
+			"(note_tags.tag_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.id = note_tags.tag_id))",
+	).Delete(&model.NoteTag{})
+	if res.Error != nil {
+		return total, fmt.Errorf("orphan note_tags: %w", res.Error)
+	}
+	total += res.RowsAffected
+
+	return total, nil
+}
+
+// cleanupOrphanDriveFiles 按给定条件收集孤儿网盘文件行，先删磁盘文件再删行。
+func (s *DB) cleanupOrphanDriveFiles(cond string) (int64, error) {
+	var orphans []model.DriveFile
+	if err := s.gorm.Model(&model.DriveFile{}).Where(cond).Find(&orphans).Error; err != nil {
+		return 0, fmt.Errorf("list: %w", err)
+	}
+	if len(orphans) == 0 {
+		return 0, nil
+	}
+	for _, f := range orphans {
+		if !f.IsDir && f.StoredName != "" && s.Drive != nil {
+			if err := s.Drive.Delete(f.UserID, f.StoredName); err != nil {
+				slog.Warn("cleanup: orphan drive disk delete failed", "file", f.StoredName, "error", err)
+			}
+		}
+	}
+	ids := make([]uuid.UUID, 0, len(orphans))
+	for _, f := range orphans {
+		ids = append(ids, f.ID)
+	}
+	return s.deleteUnscopedByIDs(&model.DriveFile{}, ids)
+}
+
+// cleanupOrphanAttachments 按给定条件收集孤儿附件行，先删磁盘文件（原件 + 缩略图）再删行。
+func (s *DB) cleanupOrphanAttachments(cond string) (int64, error) {
+	var orphans []model.Attachment
+	if err := s.gorm.Model(&model.Attachment{}).Where(cond).Find(&orphans).Error; err != nil {
+		return 0, fmt.Errorf("list: %w", err)
+	}
+	if len(orphans) == 0 {
+		return 0, nil
+	}
+	if s.Media != nil {
+		urls := make([]string, 0, len(orphans)*2)
+		for _, a := range orphans {
+			if a.URL != "" {
+				urls = append(urls, a.URL)
+			}
+			if a.ThumbURL != "" {
+				urls = append(urls, a.ThumbURL)
+			}
+		}
+		s.Media.DeleteURLs(urls)
+	}
+	ids := make([]uuid.UUID, 0, len(orphans))
+	for _, a := range orphans {
+		ids = append(ids, a.ID)
+	}
+	return s.deleteUnscopedByIDs(&model.Attachment{}, ids)
+}
+
+// deleteUnscopedByIDs 按 ID 集合硬删（穿透软删除），返回删除的行数。
+func (s *DB) deleteUnscopedByIDs(m any, ids []uuid.UUID) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	tx := s.gorm.Unscoped().Where("id IN ?", ids).Delete(m)
+	return tx.RowsAffected, tx.Error
+}

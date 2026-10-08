@@ -100,6 +100,21 @@ func main() {
 	// 用户的网盘与附件磁盘文件，而级联逻辑必须留在 store 基础设施层以满足模块隔离约束。
 	db.Drive = driveStore
 	db.Media = mediaStore
+
+	// 数据完整性启动自愈：先一次性清理历史孤儿行（外键约束的先决条件，含磁盘文件回收），
+	// 再幂等补建全库外键约束。必须在 seedAdmin 之后：users 为空时任何行都无法归属，
+	// 会被误判为孤儿。失败即退出（fail-fast）：带病启动只会让不一致继续放大。
+	if n, err := db.CleanupOrphanRows(); err != nil {
+		log.Error("orphan rows cleanup failed", "error", err)
+		os.Exit(1)
+	} else if n > 0 {
+		log.Info("orphan rows cleaned", "count", n)
+	}
+	if err := db.EnsureForeignKeys(); err != nil {
+		log.Error("foreign keys ensure failed", "error", err)
+		os.Exit(1)
+	}
+
 	broker := sse.NewBroker(rds.Raw())
 
 	// 限流计数共享于 Redis：多副本部署时额度不会随副本数放大。

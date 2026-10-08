@@ -102,6 +102,30 @@ func (h *Handler) List(c *gin.Context) {
 	})
 }
 
+// resolveParent 把 parent 参数解析为合法的父目录指针：
+// 空/"root" → 根目录（nil）；否则要求是当前用户名下真实存在的文件夹。
+// 外键约束上线后，指向不存在目录的写入会直接 500，必须在入口把住关。
+func (h *Handler) resolveParent(c *gin.Context, uid uuid.UUID, raw string) (*uuid.UUID, bool) {
+	if raw == "" || raw == "root" {
+		return nil, true
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		core.Fail(c, http.StatusBadRequest, 4000, "invalid parent")
+		return nil, false
+	}
+	parent, err := h.db.GetDriveFile(uid, id)
+	if err != nil {
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		return nil, false
+	}
+	if parent == nil || !parent.IsDir {
+		core.Fail(c, http.StatusBadRequest, 4004, "父目录不存在")
+		return nil, false
+	}
+	return &id, true
+}
+
 // CreateFolder POST /api/drive/folders  {name, parentID?}
 func (h *Handler) CreateFolder(c *gin.Context) {
 	uid, ok := h.userID(c)
@@ -117,11 +141,13 @@ func (h *Handler) CreateFolder(c *gin.Context) {
 		core.Fail(c, http.StatusBadRequest, 4001, "name required")
 		return
 	}
-	var parentID *uuid.UUID
-	if body.ParentID != nil && *body.ParentID != "" && *body.ParentID != "root" {
-		if p, err := uuid.Parse(*body.ParentID); err == nil {
-			parentID = &p
-		}
+	var rawParent string
+	if body.ParentID != nil {
+		rawParent = *body.ParentID
+	}
+	parentID, ok := h.resolveParent(c, uid, rawParent)
+	if !ok {
+		return
 	}
 	f, err := h.db.CreateDriveFolder(uid, parentID, strings.TrimSpace(body.Name))
 	if err != nil {
@@ -155,6 +181,15 @@ func (h *Handler) Upload(c *gin.Context) {
 		core.Fail(c, http.StatusBadRequest, 4002, "单文件超过大小上限")
 		return
 	}
+	// 父目录校验前移到配额占用之前：无效请求不该白花一次配额占用/归还。
+	var parentID *uuid.UUID
+	if p := c.PostForm("parentID"); p != "" {
+		pid, ok := h.resolveParent(c, uid, p)
+		if !ok {
+			return
+		}
+		parentID = pid
+	}
 	// 配额原子占用：单条带条件 UPDATE（used+?<=quota）在数据库层面串行执行，
 	// 杜绝并发上传「先查后写」的竞态（TOCTOU），永远不会越过网盘配额。
 	if err := h.db.EnsureDriveQuotaRow(uid); err != nil {
@@ -182,12 +217,6 @@ func (h *Handler) Upload(c *gin.Context) {
 		h.db.ReleaseDriveSpace(uid, fileHeader.Size)
 		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
-	}
-	var parentID *uuid.UUID
-	if p := c.PostForm("parentID"); p != "" && p != "root" {
-		if pid, perr := uuid.Parse(p); perr == nil {
-			parentID = &pid
-		}
 	}
 	f := &model.DriveFile{
 		UserID:     uid,
