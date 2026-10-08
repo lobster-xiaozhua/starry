@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"starry/backend/internal/authpkg"
+	"starry/backend/internal/core"
 )
 
 // CORS 按白名单校验请求来源。allowed 为空或 "*" 时退化为同源策略：
@@ -68,11 +69,7 @@ func RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role := c.GetString("role")
 		if role != "admin" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"code":    1006,
-				"message": "需要管理员权限",
-				"data":    nil,
-			})
+			core.Fail(c, http.StatusForbidden, 1006, "需要管理员权限")
 			return
 		}
 		c.Next()
@@ -85,11 +82,7 @@ func RequireUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role := c.GetString("role")
 		if role != "user" && role != "admin" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"code":    1006,
-				"message": "需要登录后访问",
-				"data":    nil,
-			})
+			core.Fail(c, http.StatusForbidden, 1006, "需要登录后访问")
 			return
 		}
 		c.Next()
@@ -97,9 +90,5 @@ func RequireUser() gin.HandlerFunc {
 }
 
 func abort401(c *gin.Context) {
-	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-		"code":    1005,
-		"message": "登录状态无效或已过期",
-		"data":    nil,
-	})
+	core.Fail(c, http.StatusUnauthorized, 1005, "登录状态无效或已过期")
 }

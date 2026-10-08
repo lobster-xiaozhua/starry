@@ -123,7 +123,7 @@ func main() {
 	// 体积上限刻意放在业务之前：越早拒绝超大请求，白花的内存与 CPU 越少。
 	r.Use(
 		middleware.RequestID(),
-		gin.Recovery(),
+		middleware.Recovery(),
 		middleware.RequestLogger("/health"),
 		middleware.BodyLimit(cfg.MaxBodyBytes),
 		// HSTS 只在生产开启：一旦下发，该域名在 max-age 内的 http 访问会被浏览器强制跳转，

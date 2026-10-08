@@ -104,6 +104,12 @@ unauth="$(http GET /api/admin/users)"
 unauth_code="${unauth%%$TAB*}"
 check "未带令牌访问管理端点返回 401" bash -c "[ '$unauth_code' = '401' ]"
 
+# 401 响应必须是统一信封（code/message），前端只认这个契约，重构不能破坏它。
+unauth_resp="${unauth#*$TAB}"
+unauth_code_fld="$(printf '%s' "$unauth_resp" | jget '.code')"
+unauth_msg_fld="$(printf '%s' "$unauth_resp" | jget '.message')"
+check "未带令牌的 401 响应是统一信封（含 code/message）" bash -c "[ -n '$unauth_code_fld' ] && [ -n '$unauth_msg_fld' ]"
+
 # ---- 3. 登录 ----
 login_body="$(printf '{"username":"%s","password":"%s"}' "$USERNAME" "$PASSWORD")"
 login="$(http POST /api/auth/login "$login_body")"
@@ -227,6 +233,12 @@ for _ in $(seq 1 25); do
   fi
 done
 check "匿名端点触发限流（429）" bash -c "[ '$rate_limited' = '1' ]"
+
+# 429 响应也必须是统一信封（code/message），与全站契约一致。
+rate_resp="$(http POST /api/auth/captcha '')"
+rate_code_fld="$(printf '%s' "${rate_resp#*$TAB}" | jget '.code')"
+rate_msg_fld="$(printf '%s' "${rate_resp#*$TAB}" | jget '.message')"
+check "限流 429 响应是统一信封（含 code/message）" bash -c "[ -n '$rate_code_fld' ] && [ -n '$rate_msg_fld' ]"
 
 # ---- 17. 管理操作审计：越权冻结自己应被拒绝，且这次尝试必须落审计 ----
 me_resp="$(http GET /api/auth/me '' "${AUTH[@]}")"

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"starry/backend/internal/core"
 	"starry/backend/internal/logx"
 )
 
@@ -56,11 +57,7 @@ func (l *Limiter) Limit(scope string, max int, window time.Duration) gin.Handler
 			return
 		}
 		if count > int64(max) {
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"code":    1029,
-				"message": "请求过于频繁，请稍后再试",
-				"data":    nil,
-			})
+			core.Fail(c, http.StatusTooManyRequests, 1029, "请求过于频繁，请稍后再试")
 			return
 		}
 		c.Next()

@@ -257,7 +257,7 @@ func (h *Handler) ExportAll(c *gin.Context) {
 		return
 	}
 	c.Header("Content-Disposition", "attachment; filename=notes-export.json")
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "ok", "data": rows})
+	core.OK(c, rows)
 }
 
 func (h *Handler) ExportMarkdown(c *gin.Context) {
@@ -328,7 +328,7 @@ func (h *Handler) Events(c *gin.Context) {
 	c.Header("X-Accel-Buffering", "no")
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
-		c.AbortWithStatus(http.StatusInternalServerError)
+		core.Fail(c, http.StatusInternalServerError, 2009, "当前环境不支持流式响应")
 		return
 	}
 	c.Status(http.StatusOK)
