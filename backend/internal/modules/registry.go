@@ -46,7 +46,7 @@ type Module struct {
 func All() []Module {
 	return []Module{
 		{Name: "auth", Register: auth.Register, Migrate: auth.Migrate},
-		{Name: "admin", Register: admin.Register, Migrate: admin.Migrate},
+		{Name: "admin", Register: admin.Register, Migrate: nil},
 		{Name: "knowledge", Register: knowledge.Register, Migrate: knowledge.Migrate},
 		{Name: "notes", Register: notes.Register, Migrate: notes.Migrate},
 		{Name: "chat", Register: chat.Register, Migrate: chat.Migrate},
@@ -64,6 +64,12 @@ func All() []Module {
 func MigrateAll(db *store.DB) error {
 	if err := db.EnsureExtensions(); err != nil {
 		return fmt.Errorf("create extensions failed: %w", err)
+	}
+	// 审计表是跨模块的安全基础设施（登录成败、锁定、管理操作都会落库），
+	// 必须在核心步骤统一迁移，与任何业务模块开关解耦：否则关掉 admin 后
+	// 登录审计的落库会因缺表而失败。
+	if err := db.MigrateAudit(); err != nil {
+		return fmt.Errorf("migrate audit failed: %w", err)
 	}
 	for _, m := range All() {
 		if !Enabled(m.Name) || m.Migrate == nil {

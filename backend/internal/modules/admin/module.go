@@ -7,7 +7,6 @@ import (
 
 	"starry/backend/internal/core"
 	"starry/backend/internal/middleware"
-	"starry/backend/internal/store"
 )
 
 // Register 装配并挂载管理模块路由。
@@ -27,10 +26,4 @@ func Register(api *gin.RouterGroup, d *core.Deps) {
 		g.POST("/users/:id/revoke-sessions", h.RevokeSessions)
 		g.GET("/audit", h.ListAuditLogs)
 	}
-}
-
-// Migrate 迁移 admin 模块拥有的表。admin 本身不拥有用户/设置表（那是 auth 的），
-// 但审计表由管理操作产生，归属 admin 最自然：admin 停用时既不挂审计路由也不迁表。
-func Migrate(db *store.DB) error {
-	return db.MigrateAudit()
 }

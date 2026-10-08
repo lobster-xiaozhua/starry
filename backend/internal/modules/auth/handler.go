@@ -188,6 +188,18 @@ func (h *Handler) Logout(c *gin.Context) {
 	core.OK(c, gin.H{"message": "已登出"})
 }
 
+// ListLockouts GET /api/auth/security/lockouts
+// 只读的安全可观测端点：列出当前被锁定的账号及其失败次数、剩余锁定秒数。
+// 由认证模块自己提供而非 admin 模块，避免 admin→auth 的跨模块依赖（模块隔离约束）。
+func (h *Handler) ListLockouts(c *gin.Context) {
+	lockouts, err := h.auth.ListLockouts(c.Request.Context())
+	if err != nil {
+		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
+		return
+	}
+	core.OK(c, gin.H{"lockouts": lockouts, "total": len(lockouts)})
+}
+
 func (h *Handler) Me(c *gin.Context) {
 	userID := c.GetString("userID")
 	user, err := h.auth.FindUserByID(c.Request.Context(), userID)

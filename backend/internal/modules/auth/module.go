@@ -35,5 +35,7 @@ func Register(api *gin.RouterGroup, d *core.Deps) {
 		g.POST("/refresh", d.Limiter.Limit("auth:refresh", 30, time.Minute), h.Refresh)
 		g.POST("/logout", middleware.JWTAuth(d.Cfg.JWTSecret), h.Logout)
 		g.GET("/me", middleware.JWTAuth(d.Cfg.JWTSecret), h.Me)
+		// 只读安全可观测端点：管理员专属，列出当前被锁定的账号。
+		g.GET("/security/lockouts", middleware.JWTAuth(d.Cfg.JWTSecret), middleware.RequireAdmin(), h.ListLockouts)
 	}
 }

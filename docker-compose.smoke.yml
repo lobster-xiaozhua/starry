@@ -10,3 +10,5 @@ services:
     environment:
       # 冒烟需要确定的登录路径，因此首次建库时关闭验证码（之后仍由管理端设置接管）。
       CAPTCHA_ENABLED: "false"
+      # 冒烟用确定性密码：清空卷后首次建库会据此创建管理员，避免随机密码无法登录。
+      ADMIN_PASSWORD: "smoke-admin-2026"

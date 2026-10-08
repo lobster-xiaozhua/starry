@@ -131,8 +131,17 @@ func (r *Redis) GetFailureCount(ctx context.Context, userID string) (int64, erro
 	return v, err
 }
 
+// lockedSetKey 维护一个被锁账号的集合，使锁定视图可以枚举当前被锁账号，
+// 而不必扫描所有用户。账号自然解锁（TTL 过期）后仍留在集合里，
+// 由 ListLockedMembers 的调用方用 IsLocked 二次过滤，保证视图与实时锁定态一致。
+const lockedSetKey = "auth:locked:set"
+
 func (r *Redis) SetLocked(ctx context.Context, userID string, ttl time.Duration) error {
-	return r.client.Set(ctx, "locked:"+userID, "1", ttl).Err()
+	pipe := r.client.TxPipeline()
+	pipe.Set(ctx, "locked:"+userID, "1", ttl)
+	pipe.SAdd(ctx, lockedSetKey, userID)
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 func (r *Redis) IsLocked(ctx context.Context, userID string) (bool, error) {
@@ -144,8 +153,15 @@ func (r *Redis) UnlockUser(ctx context.Context, userID string) error {
 	pipe := r.client.TxPipeline()
 	pipe.Del(ctx, "locked:"+userID)
 	pipe.Del(ctx, "failcount:"+userID)
+	pipe.SRem(ctx, lockedSetKey, userID)
 	_, err := pipe.Exec(ctx)
 	return err
+}
+
+// ListLockedMembers 返回曾被锁定的账号集合（可能含已自然解锁的残留项），
+// 调用方需结合 IsLocked 过滤出真正处于锁定态的账号。
+func (r *Redis) ListLockedMembers(ctx context.Context) ([]string, error) {
+	return r.client.SMembers(ctx, lockedSetKey).Result()
 }
 
 func (r *Redis) LockTTL(ctx context.Context, userID string) (time.Duration, error) {

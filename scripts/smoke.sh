@@ -237,6 +237,16 @@ check "审计日志接口返回 200 且有记录" bash -c "
 check "审计记录包含越权冻结（action=user.freeze, outcome=denied）" bash -c "
   a='${audit#*$TAB}'; printf '%s' \"\$a\" | grep -q 'user.freeze' && printf '%s' \"\$a\" | grep -q 'denied'"
 
+# ---- 19. 认证安全可观测：锁定视图端点（认证 + 管理员权限 + 结构化返回）----
+lock_noauth="$(http GET /api/auth/security/lockouts)"
+lock_noauth_code="${lock_noauth%%$TAB*}"
+check "未带令牌访问锁定视图返回 401" bash -c "[ '$lock_noauth_code' = '401' ]"
+
+lock="$(http GET /api/auth/security/lockouts '' "${AUTH[@]}")"
+lock_code="${lock%%$TAB*}"
+check "管理员访问锁定视图返回 200 且含 lockouts 数组" bash -c "
+  [ '$lock_code' = '200' ] && printf '%s' '${lock#*$TAB}' | grep -q '\"lockouts\"'"
+
 echo
 echo "通过 $PASS，失败 $FAIL"
 if [ "$FAIL" -ne 0 ]; then

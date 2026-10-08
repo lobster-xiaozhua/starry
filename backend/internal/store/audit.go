@@ -6,8 +6,8 @@ import (
 	"starry/backend/internal/model"
 )
 
-// MigrateAudit 建审计表。审计由 admin 模块拥有（它是系统安全操作的天然归属），
-// 因此挂在 admin.Migrate 下，与模块开关保持一致：admin 停用时既不挂路由也不迁表。
+// MigrateAudit 建审计表。审计是跨模块的安全基础设施：登录成败、账号锁定、管理操作
+// 都会写入，因此由 registry.MigrateAll 在核心步骤统一迁移，与任何业务模块开关解耦。
 func (s *DB) MigrateAudit() error {
 	return s.gorm.AutoMigrate(&model.AuditLog{})
 }

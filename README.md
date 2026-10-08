@@ -186,3 +186,4 @@ ADMIN_PASSWORD=<你的密码> npm run smoke
 - 请求入口治理：新增 `middleware.BodyLimit` / `RaiseBodyLimit` / `IsBodyTooLarge` 与安全响应头中间件；`core.Deps.Limiter` 改为接口，解开 `core ↔ middleware` 的循环依赖。笔记导入不再静默截断超限内容（改为明确 413）。
 - 配置损坏防线：`frontend/Dockerfile` 与 CI 曾用 `sed` 改写 `package.json`，留下尾随逗号、构建阶段才炸；改为 Node 重写，并新增 `scripts/check-json.js` 让这类问题秒级暴露。
 - 列表查询与排序治理：新增 `internal/request` 包（分页 clamp + 数量上限 + order-by 白名单），笔记/对话/知识检索等读接口统一收敛；管理端补齐操作审计日志，JWT 增加 `username` 声明。
+- 认证安全事件可观测：登录成败、账号锁定从 `fmt.Printf` 升级为结构化日志（生产 JSON，便于日志管线做时间序列聚合），关键事件（登录成功 / 账号被锁 / 被锁后持续尝试）落审计表持久化；审计表改为核心迁移步骤统一创建，与模块开关解耦，关掉 admin 也不会丢失登录审计。新增只读端点 `GET /api/auth/security/lockouts`（管理员专属，由认证模块自持，避免 admin→auth 跨模块依赖），列出当前被锁账号、失败次数与剩余锁定秒数。
