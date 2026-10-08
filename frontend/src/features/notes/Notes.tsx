@@ -17,6 +17,7 @@ import { NoteItem, useDebounce, SSEEvent } from '../../shared/lib/types.ts'
 import { downloadBlob } from '../../shared/lib/utils.ts'
 import { NoteCard } from './NoteCard.tsx'
 import Sidebar from '../../shared/ui/Sidebar.tsx'
+import { formatError } from '../../shared/lib/errors.ts'
 
 const PAGE_SIZE = 20
 
@@ -47,8 +48,8 @@ export default function NotesPage() {
       })
       setNotes(data.notes)
       setTotal(data.total)
-    } catch {
-      message.error('加载失败')
+    } catch (e: any) {
+      message.error(formatError(e, '加载失败'))
     }
     setLoading(false)
   }, [page, debouncedQ, tags, archived])
@@ -87,7 +88,7 @@ export default function NotesPage() {
           // 不在列表但符合当前视图 → 前置插入（created）
           return [n, ...prev]
         })
-      } catch {
+      } catch (e: any) {
         // 笔记不属于当前视图或已被删除，忽略
       }
     },
@@ -133,8 +134,8 @@ export default function NotesPage() {
       setNewTitle('')
       setShowNew(false)
       navigate(`/notes/${note.id}`)
-    } catch {
-      message.error('创建失败')
+    } catch (e: any) {
+      message.error(formatError(e, '创建失败'))
     }
   }
 
@@ -146,8 +147,8 @@ export default function NotesPage() {
     )
     try {
       await setNoteArchived(note.id, target)
-    } catch {
-      message.error('归档操作失败')
+    } catch (e: any) {
+      message.error(formatError(e, '归档操作失败'))
       loadRef.current()
     }
   }, [])
@@ -156,8 +157,8 @@ export default function NotesPage() {
     try {
       const blob = await exportMarkdown(noteId)
       downloadBlob(blob, 'note.md')
-    } catch {
-      message.error('导出失败')
+    } catch (e: any) {
+      message.error(formatError(e, '导出失败'))
     }
   }, [])
 
@@ -172,8 +173,8 @@ export default function NotesPage() {
         setTotal((t) => Math.max(0, t - 1))
         try {
           await deleteNote(note.id)
-        } catch {
-          message.error('删除失败，已恢复列表')
+        } catch (e: any) {
+          message.error(formatError(e, '删除失败，已恢复列表'))
           loadRef.current()
         }
       },
@@ -184,8 +185,8 @@ export default function NotesPage() {
     try {
       const blob = await exportAll()
       downloadBlob(blob, 'notes-export.json')
-    } catch {
-      message.error('导出失败')
+    } catch (e: any) {
+      message.error(formatError(e, '导出失败'))
     }
   }, [])
 
@@ -213,8 +214,8 @@ export default function NotesPage() {
       } else {
         message.info('你已有笔记，未重复灌入示例')
       }
-    } catch {
-      message.error('加载示例失败')
+    } catch (e: any) {
+      message.error(formatError(e, '加载示例失败'))
     }
     setSeeding(false)
   }, [])

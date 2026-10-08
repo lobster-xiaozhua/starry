@@ -31,6 +31,7 @@ import { useTheme } from '../../theme.tsx'
 import { downloadBlob } from '../../shared/lib/utils.ts'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { formatError } from '../../shared/lib/errors.ts'
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -71,8 +72,8 @@ export default function EditorPage() {
       lastSyncRef.current = n.updatedAt
       dirtyRef.current = false
       setStale(false)
-    } catch {
-      message.error('加载笔记失败')
+    } catch (e: any) {
+      message.error(formatError(e, '加载笔记失败'))
     }
   }, [id])
 
@@ -112,8 +113,8 @@ export default function EditorPage() {
       await updateNote(cur.id, { title: cur.title || '未命名', body: cur.body, tags: cur.tags })
       dirtyRef.current = false
       setStale(false)
-    } catch {
-      message.error('自动保存失败')
+    } catch (e: any) {
+      message.error(formatError(e, '自动保存失败'))
     } finally {
       setSaving(false)
     }
@@ -141,8 +142,8 @@ export default function EditorPage() {
       setStale(false)
       message.success('已保存')
       load()
-    } catch {
-      message.error('保存失败')
+    } catch (e: any) {
+      message.error(formatError(e, '保存失败'))
     }
     setSaving(false)
   }
@@ -156,8 +157,8 @@ export default function EditorPage() {
       setBody((prev) => prev + '\n' + md)
       dirtyRef.current = true
       message.success('图片已上传')
-    } catch {
-      message.error('上传失败')
+    } catch (e: any) {
+      message.error(formatError(e, '上传失败'))
     }
     setUploading(false)
   }
@@ -167,8 +168,8 @@ export default function EditorPage() {
     try {
       const blob = await exportMarkdown(id)
       downloadBlob(blob, 'note.md')
-    } catch {
-      message.error('导出失败')
+    } catch (e: any) {
+      message.error(formatError(e, '导出失败'))
     }
   }
 

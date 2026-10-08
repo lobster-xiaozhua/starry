@@ -14,6 +14,7 @@ import {
 import { api, fetchMe, tokenStore, type AuthUser } from '@shared/api'
 import { listConversations, seedDemoConversation, type Conversation } from '../chat/agent.ts'
 import { seedDemoNotes } from '../notes/notes.ts'
+import { formatError } from '../../shared/lib/errors.ts'
 
 interface RecentNote {
   id: string
@@ -110,8 +111,8 @@ export default function Home() {
         message.info('你已有数据，未重复灌入示例')
       }
       await Promise.all([loadNotes(), loadConvs()])
-    } catch {
-      message.error('加载示例失败')
+    } catch (e: any) {
+      message.error(formatError(e, '加载示例失败'))
     }
     setSeeding(false)
   }, [loadNotes, loadConvs, message])

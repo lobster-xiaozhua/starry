@@ -28,6 +28,7 @@ import {
   subscribeTaskProgress,
   type AgentTask,
 } from '../chat/tasks.ts'
+import { formatError } from '../../shared/lib/errors.ts'
 
 const STATUS_META: Record<string, { color: string; text: string }> = {
   queued: { color: 'default', text: '排队中' },
@@ -98,7 +99,7 @@ export default function KnowledgePage() {
       setContent('')
       reloadDocs()
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '入库失败')
+      message.error(formatError(e, '入库失败'))
     } finally {
       setIngesting(false)
     }
@@ -114,7 +115,7 @@ export default function KnowledgePage() {
     try {
       setHits(await searchKnowledge(q, 5))
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '检索失败')
+      message.error(formatError(e, '检索失败'))
     } finally {
       setSearching(false)
     }
@@ -125,8 +126,8 @@ export default function KnowledgePage() {
       await deleteKnowledgeDoc(id)
       message.success('已删除')
       reloadDocs()
-    } catch {
-      message.error('删除失败')
+    } catch (e: any) {
+      message.error(formatError(e, '删除失败'))
     }
   }
 
@@ -169,7 +170,7 @@ export default function KnowledgePage() {
       controllerRef.current = controller
       reloadTasks()
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '创建任务失败')
+      message.error(formatError(e, '创建任务失败'))
     }
   }
 
@@ -180,8 +181,8 @@ export default function KnowledgePage() {
       message.success('已请求取消')
       controllerRef.current?.abort()
       reloadTasks()
-    } catch {
-      message.error('取消失败')
+    } catch (e: any) {
+      message.error(formatError(e, '取消失败'))
     }
   }
 

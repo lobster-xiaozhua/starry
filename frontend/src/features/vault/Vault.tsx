@@ -28,6 +28,7 @@ import {
   verifyKey,
 } from './crypto.ts'
 import type { VaultItem, VaultType } from '../../shared/lib/types.ts'
+import { formatError } from '../../shared/lib/errors.ts'
 
 const { Text } = Typography
 
@@ -100,7 +101,7 @@ export default function VaultPage() {
       setVerifier(data.verifier)
       setPhase(data.setup ? 'locked' : 'setup')
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '加载失败')
+      message.error(formatError(e, '加载失败'))
       setPhase('locked')
     }
   }, [message])
@@ -113,7 +114,7 @@ export default function VaultPage() {
     try {
       setItems(await listVaultItems())
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '加载失败')
+      message.error(formatError(e, '加载失败'))
     }
   }, [message])
 
@@ -138,7 +139,7 @@ export default function VaultPage() {
       await loadItems()
       message.success('保险箱已创建并解锁')
     } catch (e: any) {
-      message.error(e?.message || '创建失败')
+      message.error(formatError(e, '创建失败'))
     } finally {
       setBusy(false)
     }
@@ -203,7 +204,7 @@ export default function VaultPage() {
       await loadItems()
       message.success('已保存')
     } catch (e: any) {
-      message.error(e?.message || '保存失败')
+      message.error(formatError(e, '保存失败'))
     } finally {
       setBusy(false)
     }
@@ -219,8 +220,8 @@ export default function VaultPage() {
       })
       await loadItems()
       message.success('已删除')
-    } catch {
-      message.error('删除失败')
+    } catch (e: any) {
+      message.error(formatError(e, '删除失败'))
     }
   }
 

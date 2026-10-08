@@ -26,6 +26,7 @@ import {
   updateTask,
 } from './boards.ts'
 import type { BoardTask, BoardTaskPriority, BoardView } from '../../shared/lib/types.ts'
+import { formatError } from '../../shared/lib/errors.ts'
 
 const PRIORITY_META: Record<BoardTaskPriority, { color: string; text: string }> = {
   low: { color: 'default', text: '低' },
@@ -73,7 +74,7 @@ export default function BoardsPage() {
         return data[0]?.id ?? null
       })
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '加载看板失败')
+      message.error(formatError(e, '加载看板失败'))
     } finally {
       setLoading(false)
     }
@@ -98,7 +99,7 @@ export default function BoardsPage() {
       await reload()
       message.success('看板已创建')
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '创建失败')
+      message.error(formatError(e, '创建失败'))
     }
   }
 
@@ -107,8 +108,8 @@ export default function BoardsPage() {
       await deleteBoard(id)
       await reload()
       message.success('看板已删除')
-    } catch {
-      message.error('删除失败')
+    } catch (e: any) {
+      message.error(formatError(e, '删除失败'))
     }
   }
 
@@ -120,7 +121,7 @@ export default function BoardsPage() {
       await createColumn(selected.id, title.trim())
       await reload()
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '新建列失败')
+      message.error(formatError(e, '新建列失败'))
     }
   }
 
@@ -128,8 +129,8 @@ export default function BoardsPage() {
     try {
       await deleteColumn(id)
       await reload()
-    } catch {
-      message.error('删除列失败')
+    } catch (e: any) {
+      message.error(formatError(e, '删除列失败'))
     }
   }
 
@@ -178,7 +179,7 @@ export default function BoardsPage() {
       await reload()
       message.success('已保存')
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '保存失败')
+      message.error(formatError(e, '保存失败'))
     } finally {
       setSavingTask(false)
     }
@@ -189,8 +190,8 @@ export default function BoardsPage() {
       await deleteTask(id)
       await reload()
       message.success('已删除')
-    } catch {
-      message.error('删除失败')
+    } catch (e: any) {
+      message.error(formatError(e, '删除失败'))
     }
   }
 
@@ -198,8 +199,8 @@ export default function BoardsPage() {
     try {
       await updateTask(taskId, { columnId: toColumnId })
       await reload()
-    } catch {
-      message.error('移动失败')
+    } catch (e: any) {
+      message.error(formatError(e, '移动失败'))
     }
   }
 

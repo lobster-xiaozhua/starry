@@ -21,6 +21,7 @@ import {
   uploadFile,
 } from './drive.ts'
 import type { DriveFile } from '../../shared/lib/types.ts'
+import { formatError } from '../../shared/lib/errors.ts'
 
 type Crumb = { id: string; name: string }
 
@@ -51,7 +52,7 @@ export default function DrivePage() {
       setUsed(data.used)
       setQuota(data.quota)
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '加载失败')
+      message.error(formatError(e, '加载失败'))
     } finally {
       setLoading(false)
     }
@@ -72,7 +73,7 @@ export default function DrivePage() {
       message.success('上传完成')
       reload()
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '上传失败')
+      message.error(formatError(e, '上传失败'))
     } finally {
       setUploading(false)
     }
@@ -85,7 +86,7 @@ export default function DrivePage() {
       await createFolder(name.trim(), parentId)
       reload()
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '创建失败')
+      message.error(formatError(e, '创建失败'))
     }
   }
 
@@ -96,7 +97,7 @@ export default function DrivePage() {
       await renameFile(f.id, name.trim())
       reload()
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '改名失败')
+      message.error(formatError(e, '改名失败'))
     }
   }
 
@@ -106,7 +107,7 @@ export default function DrivePage() {
       message.success('已删除')
       reload()
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || '删除失败')
+      message.error(formatError(e, '删除失败'))
     }
   }
 
