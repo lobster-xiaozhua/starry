@@ -265,6 +265,30 @@ lock_code="${lock%%$TAB*}"
 check "管理员访问锁定视图返回 200 且含 lockouts 数组" bash -c "
   [ '$lock_code' = '200' ] && printf '%s' '${lock#*$TAB}' | grep -q '\"lockouts\"'"
 
+# ---- 20. 安全销户：注册临时用户 → 管理员级联删除 → 用户消失且无法登录 ----
+PURGE_USER="smoke-purge-$(date +%s)"
+PURGE_MAIL="$PURGE_USER@example.com"
+reg="$(http POST /api/auth/register "$(printf '{"username":"%s","email":"%s","password":"Purge-2026x!"}' "$PURGE_USER" "$PURGE_MAIL")")"
+reg_code="${reg%%$TAB*}"
+purge_uid="$(printf '%s' "${reg#*$TAB}" | jget '.data.user.id')"
+check "注册临时用户成功（用于销户链路）" bash -c "
+  [ '$reg_code' = '201' ] || [ '$reg_code' = '200' ]"
+
+# 管理员删除自己应被拒绝（同时覆盖「管理员账号不可删除」的防线）
+self_del="$(http DELETE "/api/admin/users/$admin_id" '' "${AUTH[@]}")"
+check "管理员删除自己被拒绝（400）" bash -c "[ '${self_del%%$TAB*}' = '400' ]"
+
+# 级联删除临时用户
+del="$(http DELETE "/api/admin/users/$purge_uid" '' "${AUTH[@]}")"
+del_code="${del%%$TAB*}"
+check "管理员删除用户返回 200" bash -c "[ '$del_code' = '200' ]"
+
+# 删除后：用户查询 404、无法再登录
+gone="$(http GET "/api/admin/users/$purge_uid" '' "${AUTH[@]}")"
+check "被删用户查询返回 404" bash -c "[ '${gone%%$TAB*}' = '404' ]"
+relog="$(http POST /api/auth/login "$(printf '{"username":"%s","password":"Purge-2026x!"}' "$PURGE_USER")")"
+check "被删用户无法再登录（401）" bash -c "[ '${relog%%$TAB*}' = '401' ]"
+
 echo
 echo "通过 $PASS，失败 $FAIL"
 if [ "$FAIL" -ne 0 ]; then

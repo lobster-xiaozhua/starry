@@ -14,7 +14,9 @@ import (
 )
 
 type DB struct {
-	gorm *gorm.DB
+	gorm  *gorm.DB
+	Drive *DriveStore // 网盘磁盘存储：销户级联清理时删除用户文件
+	Media *FileStore  // 笔记附件磁盘存储：销户级联清理时删除附件
 }
 
 func NewPostgres(dsn string) (*DB, error) {

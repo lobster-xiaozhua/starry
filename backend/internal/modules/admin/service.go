@@ -171,4 +171,24 @@ func (s *AdminService) UnfreezeUser(ctx context.Context, userID string) error {
 	return s.db.UpdateUserStatus(userID, "active")
 }
 
+// DeleteUser 安全删除一个用户：先吊销其全部刷新令牌（会话立即失效），
+// 再由 store 级联清理其所有业务数据（含网盘与笔记附件的磁盘文件）并硬删账号。
+// 管理员账号禁止删除（与冻结策略一致），避免误删导致无法管理。
+func (s *AdminService) DeleteUser(ctx context.Context, userID string) error {
+	user, err := s.db.FindUserByID(userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return store.ErrNotFound
+	}
+	if user.Role == "admin" {
+		return service.ErrAdminUser
+	}
+	if err := s.RevokeSessions(ctx, userID); err != nil {
+		return err
+	}
+	return s.db.PurgeUserData(ctx, user.ID)
+}
+
 var _ = model.User{}

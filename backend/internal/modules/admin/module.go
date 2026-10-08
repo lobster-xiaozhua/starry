@@ -24,6 +24,7 @@ func Register(api *gin.RouterGroup, d *core.Deps) {
 		g.POST("/users/:id/unfreeze", h.UnfreezeUser)
 		g.POST("/users/:id/reset-password", h.ForceResetPassword)
 		g.POST("/users/:id/revoke-sessions", h.RevokeSessions)
+		g.DELETE("/users/:id", h.DeleteUser)
 		g.GET("/audit", h.ListAuditLogs)
 	}
 }

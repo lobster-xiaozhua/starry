@@ -63,13 +63,21 @@ func (s *DB) SetNoteArchived(userID, noteID uuid.UUID, archived bool) error {
 }
 
 func (s *DB) DeleteNote(userID, noteID uuid.UUID) error {
-	res := s.gorm.Unscoped().Where("id = ? AND user_id = ?", noteID, userID).
+	// 软删除笔记本体（Note 已启用软删除，普通 Delete 只置 deleted_at，可恢复）；
+	// 连接表与附件无软删除字段，需硬删，避免留下指向已删笔记的孤儿行。
+	res := s.gorm.Where("id = ? AND user_id = ?", noteID, userID).
 		Delete(&model.Note{})
 	if res.Error != nil {
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
 		return nil
+	}
+	if err := s.gorm.Where("note_id = ?", noteID).Unscoped().Delete(&model.NoteTag{}).Error; err != nil {
+		return err
+	}
+	if err := s.gorm.Where("note_id = ?", noteID).Unscoped().Delete(&model.NoteStableID{}).Error; err != nil {
+		return err
 	}
 	return s.DeleteAttachmentsByNote(noteID)
 }

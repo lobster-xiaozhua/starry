@@ -203,3 +203,31 @@ func (h *Handler) UnfreezeUser(c *gin.Context) {
 	h.recordAudit(c, "user.unfreeze", userID, "success", "")
 	core.OK(c, gin.H{"message": "账号已解冻，可正常登录"})
 }
+
+// DeleteUser 安全删除用户：吊销其全部会话，级联清理其所有业务数据（含网盘与
+// 笔记附件的磁盘文件），最后硬删账号。不允许删除自己，也不允许删除管理员。
+func (h *Handler) DeleteUser(c *gin.Context) {
+	userID := c.Param("id")
+	if userID == c.GetString("userID") {
+		h.recordAudit(c, "user.delete", userID, "denied", "attempt to delete self")
+		core.Fail(c, http.StatusBadRequest, 1009, "不能删除当前登录的管理员账号")
+		return
+	}
+	if err := h.adminSvc.DeleteUser(c.Request.Context(), userID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			h.recordAudit(c, "user.delete", userID, "failed", "user not found")
+			core.Fail(c, http.StatusNotFound, 1011, "用户不存在")
+			return
+		}
+		if errors.Is(err, service.ErrAdminUser) {
+			h.recordAudit(c, "user.delete", userID, "denied", "admin account not deletable")
+			core.Fail(c, http.StatusBadRequest, 1009, "管理员账号不允许删除")
+			return
+		}
+		h.recordAudit(c, "user.delete", userID, "failed", err.Error())
+		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
+		return
+	}
+	h.recordAudit(c, "user.delete", userID, "success", "")
+	core.OK(c, gin.H{"message": "用户及其全部数据已删除"})
+}

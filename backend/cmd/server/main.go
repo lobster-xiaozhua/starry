@@ -96,6 +96,10 @@ func main() {
 		log.Error("init drive dir failed", "error", err)
 		os.Exit(1)
 	}
+	// 把两个磁盘存储挂到共享 DB 容器上：销户级联清理（PurgeUserData）需要直接删除
+	// 用户的网盘与附件磁盘文件，而级联逻辑必须留在 store 基础设施层以满足模块隔离约束。
+	db.Drive = driveStore
+	db.Media = mediaStore
 	broker := sse.NewBroker(rds.Raw())
 
 	// 限流计数共享于 Redis：多副本部署时额度不会随副本数放大。

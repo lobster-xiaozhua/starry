@@ -4,16 +4,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type Note struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID    uuid.UUID `gorm:"type:uuid;index" json:"-"`
-	Title     string    `gorm:"size:256;not null" json:"title"`
-	Body      string    `gorm:"type:text;not null;default:''" json:"body"`
-	Archived  bool      `gorm:"not null;default:false" json:"archived"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID        uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID    uuid.UUID      `gorm:"type:uuid;index" json:"-"`
+	Title     string         `gorm:"size:256;not null" json:"title"`
+	Body      string         `gorm:"type:text;not null;default:''" json:"body"`
+	Archived  bool           `gorm:"not null;default:false" json:"archived"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 func (Note) TableName() string { return "notes" }
@@ -24,9 +26,10 @@ type NoteWithTags struct {
 }
 
 type Tag struct {
-	ID     uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID uuid.UUID `gorm:"type:uuid;index" json:"-"`
-	Name   string    `gorm:"size:128;not null" json:"name"`
+	ID        uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID    uuid.UUID      `gorm:"type:uuid;index" json:"-"`
+	Name      string         `gorm:"size:128;not null" json:"name"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 func (Tag) TableName() string { return "tags" }
