@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"starry/backend/internal/model"
 )
@@ -130,7 +131,84 @@ func (s *DB) SumDriveUsage(userID uuid.UUID) (int64, error) {
 	return total, err
 }
 
-// DeleteDriveFileRow 仅删除元数据行（磁盘清理由调用方处理）。
-func (s *DB) DeleteDriveFileRow(userID, id uuid.UUID) error {
-	return s.gorm.Where("user_id = ? AND id = ?", userID, id).Delete(&model.DriveFile{}).Error
+// ===== 网盘配额计数（drive_quota：每用户一行，已用空间的权威来源） =====
+
+// EnsureDriveQuotaRow 惰性创建（并回填）某用户的配额行：
+//   - 已存在则 ON CONFLICT 无操作；
+//   - 不存在则一次性按已有文件体积回填，使 used 与文件行初始一致。
+//
+// 回填值来自子查询 SUM(size)，因此在并发首建时无论哪条 INSERT 胜出，
+// 计算出的 used 都相同，不会产生回填竞态。
+func (s *DB) EnsureDriveQuotaRow(userID uuid.UUID) error {
+	return s.gorm.Exec(`
+		INSERT INTO drive_quota (user_id, used, created_at, updated_at)
+		VALUES (?, COALESCE((SELECT SUM(size) FROM drive_files WHERE user_id = ? AND is_dir = false), 0), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		ON CONFLICT (user_id) DO NOTHING
+	`, userID, userID).Error
+}
+
+// GetOrCreateDriveQuota 确保配额行存在并返回当前计数（供读取展示用）。
+func (s *DB) GetOrCreateDriveQuota(userID uuid.UUID) (*model.DriveQuota, error) {
+	if err := s.EnsureDriveQuotaRow(userID); err != nil {
+		return nil, err
+	}
+	var q model.DriveQuota
+	if err := s.gorm.Where("user_id = ?", userID).First(&q).Error; err != nil {
+		return nil, err
+	}
+	return &q, nil
+}
+
+// ClaimDriveSpace 原子占用 size 字节：仅当 used+size <= quota 时更新成功，
+// 返回是否占用成功。单条带条件 UPDATE 在数据库层面串行执行，从根本上杜绝
+// 并发上传的「检查-使用」竞态（TOCTOU），永远不会让 used 越过 quota。
+func (s *DB) ClaimDriveSpace(userID uuid.UUID, size, quota int64) (bool, error) {
+	res := s.gorm.Exec(
+		"UPDATE drive_quota SET used = used + ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used + ? <= ?",
+		size, userID, size, quota,
+	)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
+// ReleaseDriveSpace 归还 size 字节（删除文件时调用），下探到 0 不会变负。
+func (s *DB) ReleaseDriveSpace(userID uuid.UUID, size int64) error {
+	return s.gorm.Exec(
+		"UPDATE drive_quota SET used = CASE WHEN used - ? < 0 THEN 0 ELSE used - ? END, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+		size, size, userID,
+	).Error
+}
+
+// DeleteDriveFileAndReclaim 在单事务内删除文件元数据行并归还其占用空间，
+// 保证「删行」与「回写配额」要么都完成、要么都不做，避免半删导致的配额漂移。
+// 文件不存在（已被删）时安全返回，reclaimed 为实际归还的字节数（文件夹为 0）。
+func (s *DB) DeleteDriveFileAndReclaim(userID, id uuid.UUID) (int64, error) {
+	var reclaimed int64
+	err := s.gorm.Transaction(func(tx *gorm.DB) error {
+		var f model.DriveFile
+		if err := tx.Where("user_id = ? AND id = ?", userID, id).First(&f).Error; err != nil {
+			if isNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		if !f.IsDir {
+			reclaimed = f.Size
+		}
+		if err := tx.Where("user_id = ? AND id = ?", userID, id).Delete(&model.DriveFile{}).Error; err != nil {
+			return err
+		}
+		if reclaimed > 0 {
+			if err := tx.Exec(
+				"UPDATE drive_quota SET used = CASE WHEN used - ? < 0 THEN 0 ELSE used - ? END, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+				reclaimed, reclaimed, userID,
+			).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return reclaimed, err
 }

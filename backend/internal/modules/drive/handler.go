@@ -83,11 +83,14 @@ func (h *Handler) List(c *gin.Context) {
 		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	used, err := h.db.SumDriveUsage(uid)
+	// used 来自配额计数行（drive_quota.used），是已用空间的权威来源，
+	// 而非每次实时聚合，避免与上传的原子占用产生不一致。
+	q, err := h.db.GetOrCreateDriveQuota(uid)
 	if err != nil {
 		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
+	used := q.Used
 	if items == nil {
 		items = []model.DriveFile{}
 	}
@@ -152,23 +155,31 @@ func (h *Handler) Upload(c *gin.Context) {
 		core.Fail(c, http.StatusBadRequest, 4002, "单文件超过大小上限")
 		return
 	}
-	used, err := h.db.SumDriveUsage(uid)
+	// 配额原子占用：单条带条件 UPDATE（used+?<=quota）在数据库层面串行执行，
+	// 杜绝并发上传「先查后写」的竞态（TOCTOU），永远不会越过网盘配额。
+	if err := h.db.EnsureDriveQuotaRow(uid); err != nil {
+		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
+		return
+	}
+	claimed, err := h.db.ClaimDriveSpace(uid, fileHeader.Size, h.cfg.DriveQuotaBytes)
 	if err != nil {
 		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
-	if used+fileHeader.Size > h.cfg.DriveQuotaBytes {
+	if !claimed {
 		core.Fail(c, http.StatusBadRequest, 4003, "网盘空间不足")
 		return
 	}
 	src, err := fileHeader.Open()
 	if err != nil {
+		h.db.ReleaseDriveSpace(uid, fileHeader.Size)
 		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
 	defer src.Close()
 	storedName, err := h.drive.Save(uid, src)
 	if err != nil {
+		h.db.ReleaseDriveSpace(uid, fileHeader.Size)
 		core.Fail(c, http.StatusInternalServerError, 5000, err.Error())
 		return
 	}
@@ -297,5 +308,9 @@ func (h *Handler) deleteNode(uid, id uuid.UUID) error {
 	if !node.IsDir {
 		h.drive.Delete(uid, node.StoredName)
 	}
-	return h.db.DeleteDriveFileRow(uid, id)
+	// 删除元数据行并在同一事务内归还配额，避免「删了文件却没回写配额」的漂移。
+	if _, err := h.db.DeleteDriveFileAndReclaim(uid, id); err != nil {
+		return err
+	}
+	return nil
 }
