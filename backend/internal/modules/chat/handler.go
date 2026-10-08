@@ -2,7 +2,6 @@ package chat
 
 import (
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -61,10 +60,13 @@ func (h *Handler) CreateConversation(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Title string `json:"title"`
+		Title string `json:"title" binding:"max=200"`
 	}
-	_ = c.ShouldBindJSON(&in)
-	title := in.Title
+	if err := c.ShouldBindJSON(&in); err != nil {
+		core.Fail(c, http.StatusBadRequest, 3008, "invalid body: "+err.Error())
+		return
+	}
+	title, _ := request.TrimNonEmpty(in.Title)
 	if title == "" {
 		title = "新对话"
 	}
@@ -99,13 +101,17 @@ func (h *Handler) RenameConversation(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Title string `json:"title"`
+		Title string `json:"title" binding:"max=200"`
 	}
-	if err := c.ShouldBindJSON(&in); err != nil || in.Title == "" {
+	if err := c.ShouldBindJSON(&in); err != nil {
+		core.Fail(c, http.StatusBadRequest, 3008, "invalid body: "+err.Error())
+		return
+	}
+	title, ok := request.TrimNonEmpty(in.Title)
+	if !ok {
 		core.Fail(c, http.StatusBadRequest, 3008, "invalid body: title required")
 		return
 	}
-	title := strings.TrimSpace(in.Title)
 	if len([]rune(title)) > 80 {
 		title = string([]rune(title)[:80])
 	}
@@ -196,10 +202,10 @@ func (h *Handler) SaveMessage(c *gin.Context) {
 	}
 	var in struct {
 		Role       string `json:"role" binding:"required"`
-		Content    string `json:"content"`
-		ToolCalls  string `json:"toolCalls"`
-		ToolCallID string `json:"toolCallId"`
-		CreatedAt  string `json:"createdAt"`
+		Content    string `json:"content" binding:"max=65536"`
+		ToolCalls  string `json:"toolCalls" binding:"max=1048576"`
+		ToolCallID string `json:"toolCallId" binding:"max=200"`
+		CreatedAt  string `json:"createdAt" binding:"max=64"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		core.Fail(c, http.StatusBadRequest, 3008, "invalid body: "+err.Error())
@@ -345,16 +351,21 @@ func (h *Handler) CreateTask(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Goal string `json:"goal" binding:"required"`
+		Goal string `json:"goal" binding:"required,max=2000"`
 	}
-	if err := c.ShouldBindJSON(&in); err != nil || strings.TrimSpace(in.Goal) == "" {
+	if err := c.ShouldBindJSON(&in); err != nil {
+		core.Fail(c, http.StatusBadRequest, 3008, "invalid body: "+err.Error())
+		return
+	}
+	goal, ok := request.TrimNonEmpty(in.Goal)
+	if !ok {
 		core.Fail(c, http.StatusBadRequest, 3008, "invalid body: goal required")
 		return
 	}
 	task := &model.AgentTask{
 		ID:        uuid.New(),
 		UserID:    uid,
-		Goal:      strings.TrimSpace(in.Goal),
+		Goal:      goal,
 		Status:    "queued",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -419,11 +430,11 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Status   string `json:"status"`
-		Plan     string `json:"plan"`
+		Status   string `json:"status" binding:"max=64"`
+		Plan     string `json:"plan" binding:"max=65536"`
 		Progress int    `json:"progress"`
-		Result   string `json:"result"`
-		Error    string `json:"error"`
+		Result   string `json:"result" binding:"max=65536"`
+		Error    string `json:"error" binding:"max=65536"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		core.Fail(c, http.StatusBadRequest, 3008, "invalid body: "+err.Error())

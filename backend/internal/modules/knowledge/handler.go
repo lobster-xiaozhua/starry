@@ -57,9 +57,9 @@ func (h *Handler) Ingest(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Title   string `json:"title"`
+		Title   string `json:"title" binding:"max=200"`
 		Content string `json:"content" binding:"required"`
-		Source  string `json:"source"`
+		Source  string `json:"source" binding:"max=200"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		core.Fail(c, http.StatusBadRequest, 3008, "invalid body: "+err.Error())
@@ -68,6 +68,10 @@ func (h *Handler) Ingest(c *gin.Context) {
 	content := strings.TrimSpace(in.Content)
 	if content == "" {
 		core.Fail(c, http.StatusBadRequest, 3008, "content 不能为空")
+		return
+	}
+	if !request.WithinMaxRunes(content, request.KnowledgeRunes) {
+		core.Fail(c, http.StatusBadRequest, 3008, "content 超出单次入库上限")
 		return
 	}
 	title := strings.TrimSpace(in.Title)

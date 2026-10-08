@@ -71,8 +71,8 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Name  string `json:"name"`
-		Color string `json:"color"`
+		Name  string `json:"name" binding:"max=200"`
+		Color string `json:"color" binding:"max=32"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Name) == "" {
 		core.Fail(c, http.StatusBadRequest, 4001, "name required")
@@ -98,8 +98,8 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Name     *string `json:"name"`
-		Color    *string `json:"color"`
+		Name     *string `json:"name" binding:"max=200"`
+		Color    *string `json:"color" binding:"max=32"`
 		Position *int    `json:"position"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -143,7 +143,7 @@ func (h *Handler) CreateColumn(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Title string `json:"title"`
+		Title string `json:"title" binding:"max=200"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Title) == "" {
 		core.Fail(c, http.StatusBadRequest, 4001, "title required")
@@ -169,7 +169,7 @@ func (h *Handler) UpdateColumn(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Title    *string `json:"title"`
+		Title    *string `json:"title" binding:"max=200"`
 		Position *int    `json:"position"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -213,10 +213,10 @@ func (h *Handler) CreateTask(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Title    string  `json:"title"`
+		Title    string  `json:"title" binding:"max=200"`
 		ColumnID string  `json:"columnId"`
-		Note     string  `json:"note"`
-		Priority string  `json:"priority"`
+		Note     string  `json:"note" binding:"max=8192"`
+		Priority string  `json:"priority" binding:"max=32"`
 		Due      *string `json:"due"` // ISO time
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Title) == "" {
@@ -266,9 +266,9 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Title    *string `json:"title"`
-		Note     *string `json:"note"`
-		Priority *string `json:"priority"`
+		Title    *string `json:"title" binding:"max=200"`
+		Note     *string `json:"note" binding:"max=8192"`
+		Priority *string `json:"priority" binding:"max=32"`
 		Due      *string `json:"due"`
 		ColumnID *string `json:"columnId"`
 		Position *int    `json:"position"`

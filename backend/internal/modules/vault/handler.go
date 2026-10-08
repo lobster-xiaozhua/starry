@@ -69,7 +69,7 @@ func (h *Handler) Setup(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Verifier string `json:"verifier"`
+		Verifier string `json:"verifier" binding:"max=262144"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Verifier) == "" {
 		core.Fail(c, http.StatusBadRequest, 4001, "verifier required")
@@ -108,9 +108,9 @@ func (h *Handler) CreateItem(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Title     string `json:"title"`
-		Type      string `json:"type"`
-		Encrypted string `json:"encrypted"`
+		Title     string `json:"title" binding:"max=200"`
+		Type      string `json:"type" binding:"max=32"`
+		Encrypted string `json:"encrypted" binding:"max=262144"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Title) == "" || strings.TrimSpace(body.Encrypted) == "" {
 		core.Fail(c, http.StatusBadRequest, 4001, "title and encrypted required")
@@ -144,8 +144,8 @@ func (h *Handler) UpdateItem(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Title     *string `json:"title"`
-		Encrypted *string `json:"encrypted"`
+		Title     *string `json:"title" binding:"max=200"`
+		Encrypted *string `json:"encrypted" binding:"max=262144"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		core.Fail(c, http.StatusBadRequest, 4001, "invalid body")

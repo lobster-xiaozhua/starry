@@ -187,3 +187,4 @@ ADMIN_PASSWORD=<你的密码> npm run smoke
 - 配置损坏防线：`frontend/Dockerfile` 与 CI 曾用 `sed` 改写 `package.json`，留下尾随逗号、构建阶段才炸；改为 Node 重写，并新增 `scripts/check-json.js` 让这类问题秒级暴露。
 - 列表查询与排序治理：新增 `internal/request` 包（分页 clamp + 数量上限 + order-by 白名单），笔记/对话/知识检索等读接口统一收敛；管理端补齐操作审计日志，JWT 增加 `username` 声明。
 - 认证安全事件可观测：登录成败、账号锁定从 `fmt.Printf` 升级为结构化日志（生产 JSON，便于日志管线做时间序列聚合），关键事件（登录成功 / 账号被锁 / 被锁后持续尝试）落审计表持久化；审计表改为核心迁移步骤统一创建，与模块开关解耦，关掉 admin 也不会丢失登录审计。新增只读端点 `GET /api/auth/security/lockouts`（管理员专属，由认证模块自持，避免 admin→auth 跨模块依赖），列出当前被锁账号、失败次数与剩余锁定秒数。
+- 请求体内容校验：补齐入口治理闭环的最后一环——`MaxBodyBytes` 只限整体请求体、`Sort` 只限 ORDER BY 白名单，单个自由文本字段此前可被塞到接近 8MB，直接冲击数据库列、向量化/分块算力与存储体积。新增 `internal/request` 的 `TrimNonEmpty` / `WithinMaxRunes` 与分级长度常量（标题 200、任务备注 8K、单条消息 64K、保险箱密文 256K、单次知识库正文 100K），给 notes/boards/chat/vault/drive/knowledge 的标题、名称、正文、密文等字段统一加长度上限；并修复 `chat.CreateConversation` 长期存在的 `_ = c.ShouldBindJSON` 缺陷（畸形 JSON 被静默当作零值接受）。

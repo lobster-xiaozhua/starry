@@ -107,7 +107,7 @@ func (h *Handler) CreateFolder(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Name     string  `json:"name"`
+		Name     string  `json:"name" binding:"max=200"`
 		ParentID *string `json:"parentID"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Name) == "" {
@@ -243,7 +243,7 @@ func (h *Handler) Rename(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Name string `json:"name"`
+		Name string `json:"name" binding:"max=200"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Name) == "" {
 		core.Fail(c, http.StatusBadRequest, 4001, "name required")

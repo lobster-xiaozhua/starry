@@ -157,6 +157,12 @@ if [ -n "$board_id" ] && [ "$board_id" != "null" ]; then
   http DELETE "/api/boards/$board_id" '' "${AUTH[@]}" >/dev/null
 fi
 
+# ---- 7b. 入口治理：超长自由文本字段必须被拒（防超大单字段冲击下游/存储）----
+long_name="$(printf 'x%.0s' $(seq 1 201))"
+oversize_board="$(http POST /api/boards "{\"name\":\"$long_name\"}" "${AUTH[@]}")"
+oversize_board_code="${oversize_board%%$TAB*}"
+check "超长看板名称（>200 字符）被拒（400）" bash -c "[ '$oversize_board_code' = '400' ]"
+
 # ---- 8. 网盘 ----
 drive="$(http GET /api/drive '' "${AUTH[@]}")"
 check "网盘文件列表可读" bash -c "[ \"${drive%%$TAB*}\" = '200' ]"

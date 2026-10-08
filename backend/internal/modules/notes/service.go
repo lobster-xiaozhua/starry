@@ -23,13 +23,13 @@ var (
 )
 
 type CreateNoteInput struct {
-	Title string   `json:"title"`
+	Title string   `json:"title" binding:"max=200"`
 	Body  string   `json:"body"`
 	Tags  []string `json:"tags"`
 }
 
 type UpdateNoteInput struct {
-	Title *string  `json:"title"`
+	Title *string  `json:"title" binding:"max=200"`
 	Body  *string  `json:"body"`
 	Tags  []string `json:"tags"`
 }
