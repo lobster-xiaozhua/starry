@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Layout, Menu, Avatar, Button, App } from 'antd'
-import { MessageSquare, Bot, NotebookPen, Shield, Sun, Moon, LogOut, Database, CheckSquare, FolderOpen, Lock } from 'lucide-react'
+import { Layout, Menu, Avatar, Button } from 'antd'
+import { MessageSquare, Bot, NotebookPen, Monitor, Sun, Moon, LogOut, Database, CheckSquare, FolderOpen, Lock } from 'lucide-react'
 import { fetchMe, tokenStore, api, type AuthUser } from '@shared/api'
 import { useTheme } from '../../theme.tsx'
 
@@ -15,7 +15,6 @@ export default function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
   const { dark, toggle } = useTheme()
-  const { message } = App.useApp()
   const [user, setUser] = useState<AuthUser | null>(null)
 
   useEffect(() => {
@@ -40,7 +39,8 @@ export default function AppShell() {
     if (p.startsWith('/boards')) return '/boards'
     if (p.startsWith('/drive')) return '/drive'
     if (p.startsWith('/vault')) return '/vault'
-    if (p.startsWith('/admin')) return '/admin'
+    if (p.startsWith('/console')) return '/console'
+    if (p.startsWith('/admin')) return '/console'
     return '/chat'
   })()
 
@@ -53,7 +53,7 @@ export default function AppShell() {
     { key: '/drive', icon: <FolderOpen size={18} />, label: '网盘' },
     { key: '/vault', icon: <Lock size={18} />, label: '保险箱' },
     ...(user?.role === 'admin'
-      ? [{ key: '/admin', icon: <Shield size={18} />, label: '管理' }]
+      ? [{ key: '/console', icon: <Monitor size={18} />, label: '控制台' }]
       : []),
   ]
 

@@ -8,8 +8,8 @@ import ForgotPassword from './features/auth/ForgotPassword.tsx'
 import ResetPassword from './features/auth/ResetPassword.tsx'
 import Chat from './features/chat/Chat.tsx'
 import Home from './features/home/Home.tsx'
-import AdminSettings from './features/admin/AdminSettings.tsx'
 import AdminUserDetail from './features/admin/AdminUserDetail.tsx'
+import Console from './features/console/Console.tsx'
 import NotesPage from './features/notes/Notes.tsx'
 import EditorPage from './features/notes/Editor.tsx'
 import KnowledgePage from './features/knowledge/Knowledge.tsx'
@@ -84,13 +84,14 @@ function AppRoot() {
               <Route path="drive" element={<DrivePage />} />
               <Route path="vault" element={<VaultPage />} />
               <Route
-                path="admin"
+                path="console"
                 element={
                   <RequireAuth admin>
-                    <AdminSettings />
+                    <Console />
                   </RequireAuth>
                 }
               />
+              <Route path="admin" element={<Navigate to="/console" replace />} />
               <Route
                 path="admin/users/:id"
                 element={
