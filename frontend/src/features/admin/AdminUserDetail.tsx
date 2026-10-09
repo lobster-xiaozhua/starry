@@ -18,7 +18,6 @@ import {
   Lock,
   UserRound,
   Mail,
-  Settings2,
   Copy,
   LogOut,
   KeyRound,

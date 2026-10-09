@@ -1,4 +1,4 @@
-import { Button, Card, Form, Input, Typography, Result, App } from 'antd'
+import { Button, Card, Form, Input, Result, App } from 'antd'
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { MailQuestion, Send, CheckCircle2 } from 'lucide-react'

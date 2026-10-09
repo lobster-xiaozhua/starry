@@ -16,8 +16,19 @@
     "check:compose": "docker compose config -q",
     "typecheck:services": "npm run typecheck --workspaces --if-present",
     "test:services": "npm test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "format": "prettier --write \"frontend/src/**/*.{ts,tsx}\" \"services/*/src/**/*.ts\"",
+    "prepare": "husky || true",
     "smoke": "bash scripts/smoke.sh",
     "backup": "bash scripts/backup.sh",
     "restore": "bash scripts/restore.sh"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "husky": "^9.0.0",
+    "prettier": "^3.3.0"
   }
 }

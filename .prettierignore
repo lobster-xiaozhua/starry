@@ -1,0 +1,8 @@
+node_modules/
+dist/
+**/*.min.js
+services/agent/dist/
+services/embed/dist/
+**/*.tsbuildinfo
+package-lock.json
+backend/docs/

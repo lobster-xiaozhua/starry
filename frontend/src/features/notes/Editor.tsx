@@ -27,7 +27,6 @@ import {
 } from './notes.ts'
 import { useSSE } from '../../shared/api/useSSE.ts'
 import { NoteItem, useDebounce } from '../../shared/lib/types.ts'
-import { useTheme } from '../../theme.tsx'
 import { downloadBlob } from '../../shared/lib/utils.ts'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -36,7 +35,6 @@ import { formatError } from '../../shared/lib/errors.ts'
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { dark } = useTheme()
   const [note, setNote] = useState<NoteItem | null>(null)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')

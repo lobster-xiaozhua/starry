@@ -1,0 +1,40 @@
+## Pre-commit hooks: format + lint + structural checks
+## Install: pip install pre-commit && pre-commit install
+## Or: make install-hooks
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-json
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+      - id: check-case-conflict
+
+  - repo: https://github.com/dnephin/pre-commit-go
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt
+        language: golang
+
+  - repo: local
+    hooks:
+      - id: golangci-lint
+        name: golangci-lint
+        entry: bash -c 'cd backend && golangci-lint run ./...'
+        language: system
+        files: \.go$
+        pass_filenames: false
+      - id: eslint
+        name: eslint
+        entry: bash -c 'npm run lint --workspaces --if-present'
+        language: system
+        files: \.(ts|tsx)$
+        pass_filenames: false
+      - id: prettier
+        name: prettier
+        entry: npx prettier --write
+        language: system
+        files: \.(ts|tsx|json|css)$
+        pass_filenames: true

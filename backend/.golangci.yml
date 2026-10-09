@@ -1,0 +1,39 @@
+## golangci-lint config: conservative linter set
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gofmt
+    - gocritic
+    - bodyclose
+    - misspell
+    - revive
+
+linters-settings:
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - performance
+  misspell:
+    locale: US
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gocritic
+    - path: cmd/server/main\.go
+      linters:
+        - revive
+      text: "calls to os.Exit"
+  max-issues-per-linter: 0
+  max-same-issues: 0

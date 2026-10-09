@@ -19,10 +19,7 @@ import {
   createTask,
   deleteBoard,
   deleteColumn,
-  deleteTask,
   listBoards,
-  updateBoard,
-  updateColumn,
   updateTask,
 } from './boards.ts'
 import type { BoardTask, BoardTaskPriority, BoardView } from '../../shared/lib/types.ts'
@@ -185,15 +182,6 @@ export default function BoardsPage() {
     }
   }
 
-  const handleDeleteTask = async (id: string) => {
-    try {
-      await deleteTask(id)
-      await reload()
-      message.success('已删除')
-    } catch (e: any) {
-      message.error(formatError(e, '删除失败'))
-    }
-  }
 
   const handleMoveTask = async (taskId: string, toColumnId: string) => {
     try {
