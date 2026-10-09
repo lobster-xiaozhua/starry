@@ -21,10 +21,16 @@ func (s *DB) CreateConversation(c *model.Conversation) error {
 }
 
 // ListConversations 返回用户的对话列表（最近活跃在前）。
-func (s *DB) ListConversations(userID uuid.UUID) ([]model.Conversation, error) {
+func (s *DB) ListConversations(userID uuid.UUID, limit, offset int) ([]model.Conversation, error) {
 	var convs []model.Conversation
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	err := s.gorm.Where("user_id = ?", userID).
-		Order("updated_at DESC").Limit(200).Find(&convs).Error
+		Order("updated_at DESC").Limit(limit).Offset(offset).Find(&convs).Error
 	return convs, err
 }
 

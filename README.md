@@ -159,7 +159,7 @@ cd backend && go test ./... && go vet ./...
 跑起来之后再做一次端到端冒烟（覆盖登录、笔记、看板、网盘、知识库降级、CORS、限流等跨模块契约）：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.smoke.yml up -d --build postgres redis embed backend
+docker compose -f docker-compose.yml -f docker-compose.smoke.yml up -d --build postgres redis migrate embed backend
 ADMIN_PASSWORD=<你的密码> npm run smoke
 ```
 

@@ -8,6 +8,7 @@ import (
 
 	"starry/backend/internal/core"
 	"starry/backend/internal/model"
+	"starry/backend/internal/request"
 	"starry/backend/internal/service"
 	"starry/backend/internal/store"
 )
@@ -89,14 +90,32 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 	}
 }
 
+// @Summary      用户列表（搜索 + 分页）
+// @Tags         admin
+// @Produce      json
+// @Security     BearerAuth
+// @Param        search  query  string  false  "用户名或邮箱关键词"
+// @Param        page    query  integer false  "页码，默认 1"
+// @Param        size    query  integer false  "每页条数，默认 50，上限 200"
+// @Success      200     {object} map[string]interface{}
+// @Failure      503     {object} map[string]interface{}
+// @Router       /admin/users [get]
 func (h *Handler) ListUsers(c *gin.Context) {
 	search := c.Query("search")
-	users, err := h.adminSvc.ListUsers(c.Request.Context(), search)
+	size := request.IntParam(c, "size", 50, 1, 200)
+	page := request.IntParam(c, "page", 1, 1, 100000)
+	offset := (page - 1) * size
+	users, err := h.adminSvc.ListUsers(c.Request.Context(), search, size, offset)
 	if err != nil {
 		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
 		return
 	}
-	core.OK(c, gin.H{"users": users})
+	total, err := h.db.CountUsers(search)
+	if err != nil {
+		core.Fail(c, http.StatusServiceUnavailable, 2001, "系统繁忙，请稍后重试")
+		return
+	}
+	core.OK(c, gin.H{"users": users, "total": total})
 }
 
 func (h *Handler) GetUser(c *gin.Context) {

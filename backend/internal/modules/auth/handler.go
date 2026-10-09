@@ -63,6 +63,11 @@ type logoutRequest struct {
 	RefreshToken string `json:"refreshToken" binding:"required"`
 }
 
+// @Summary      获取登录验证码
+// @Tags         auth
+// @Produce      json
+// @Success      200 {object} map[string]interface{}
+// @Router       /auth/captcha [get]
 func (h *Handler) Captcha(c *gin.Context) {
 	enabled := h.captchaEnabled(c.Request.Context())
 	if !enabled {
@@ -78,6 +83,13 @@ func (h *Handler) Captcha(c *gin.Context) {
 	core.OK(c, gin.H{"enabled": true, "captchaId": id, "image": b64})
 }
 
+// @Summary      用户登录
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /auth/login [post]
 func (h *Handler) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -107,6 +119,13 @@ func (h *Handler) Login(c *gin.Context) {
 	}
 }
 
+// @Summary      用户注册
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /auth/register [post]
 func (h *Handler) Register(c *gin.Context) {
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -164,6 +183,13 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 	}
 }
 
+// @Summary      刷新访问令牌
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /auth/refresh [post]
 func (h *Handler) Refresh(c *gin.Context) {
 	var req refreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -200,6 +226,13 @@ func (h *Handler) ListLockouts(c *gin.Context) {
 	core.OK(c, gin.H{"lockouts": lockouts, "total": len(lockouts)})
 }
 
+// @Summary      当前用户信息
+// @Tags         auth
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      401 {object} map[string]interface{}
+// @Router       /auth/me [get]
 func (h *Handler) Me(c *gin.Context) {
 	userID := c.GetString("userID")
 	user, err := h.auth.FindUserByID(c.Request.Context(), userID)

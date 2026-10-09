@@ -48,8 +48,8 @@ type AdminUserDetail struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
-func (s *AdminService) ListUsers(ctx context.Context, search string) ([]AdminUserView, error) {
-	users, err := s.db.ListUsers(search)
+func (s *AdminService) ListUsers(ctx context.Context, search string, limit, offset int) ([]AdminUserView, error) {
+	users, err := s.db.ListUsers(search, limit, offset)
 	if err != nil {
 		return nil, err
 	}

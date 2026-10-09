@@ -38,18 +38,36 @@ func (h *Handler) userID(c *gin.Context) (uuid.UUID, bool) {
 }
 
 // ListConversations GET /api/agent/conversations
+//
+// @Summary      对话列表（分页）
+// @Tags         chat
+// @Produce      json
+// @Security     BearerAuth
+// @Param        page  query  integer false  "页码，默认 1"
+// @Param        size  query  integer false  "每页条数，默认 50，上限 200"
+// @Success      200   {object} map[string]interface{}
+// @Failure      500   {object} map[string]interface{}
+// @Router       /agent/conversations [get]
 func (h *Handler) ListConversations(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
 		core.Fail(c, http.StatusBadRequest, 3001, "invalid user")
 		return
 	}
-	convs, err := h.db.ListConversations(uid)
+	size := request.IntParam(c, "size", 50, 1, 200)
+	page := request.IntParam(c, "page", 1, 1, 100000)
+	offset := (page - 1) * size
+	convs, err := h.db.ListConversations(uid, size, offset)
 	if err != nil {
 		core.Fail(c, http.StatusInternalServerError, 3002, err.Error())
 		return
 	}
-	core.OK(c, gin.H{"conversations": convs})
+	total, err := h.db.CountConversations(uid)
+	if err != nil {
+		core.Fail(c, http.StatusInternalServerError, 3002, err.Error())
+		return
+	}
+	core.OK(c, gin.H{"conversations": convs, "total": total})
 }
 
 // CreateConversation POST /api/agent/conversations

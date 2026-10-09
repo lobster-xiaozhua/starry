@@ -188,15 +188,33 @@ func (s *DB) UpdateUserStatus(id, status string) error {
 		Updates(map[string]interface{}{"status": status, "updated_at": time.Now()}).Error
 }
 
-func (s *DB) ListUsers(search string) ([]model.User, error) {
+func (s *DB) ListUsers(search string, limit, offset int) ([]model.User, error) {
 	var users []model.User
-	q := s.gorm.Order("created_at DESC").Limit(200)
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	q := s.gorm.Order("created_at DESC").Limit(limit)
 	if search != "" {
 		pattern := "%" + search + "%"
 		q = q.Where("username ILIKE ? OR email ILIKE ?", pattern, pattern)
 	}
-	err := q.Find(&users).Error
+	err := q.Offset(offset).Find(&users).Error
 	return users, err
+}
+
+// CountUsers 按搜索条件统计用户总数，供分页接口返回真实 total。
+func (s *DB) CountUsers(search string) (int64, error) {
+	var count int64
+	q := s.gorm.Model(&model.User{})
+	if search != "" {
+		pattern := "%" + search + "%"
+		q = q.Where("username ILIKE ? OR email ILIKE ?", pattern, pattern)
+	}
+	err := q.Count(&count).Error
+	return count, err
 }
 
 func (s *DB) LoadSettings() (model.AuthSettings, error) {
