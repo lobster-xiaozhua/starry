@@ -30,6 +30,8 @@ ALLOWED_PREFIXES=(
   "starry/backend/internal/sse"
   "starry/backend/internal/authpkg"
   "starry/backend/internal/logx"
+  "starry/backend/internal/migration"
+  "starry/backend/internal/bootcheck"
 )
 
 violations=0

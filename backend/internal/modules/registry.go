@@ -23,6 +23,7 @@ import (
 	"starry/backend/internal/modules/auth"
 	"starry/backend/internal/modules/boards"
 	"starry/backend/internal/modules/chat"
+	"starry/backend/internal/modules/console"
 	"starry/backend/internal/modules/drive"
 	"starry/backend/internal/modules/knowledge"
 	"starry/backend/internal/modules/notes"
@@ -53,6 +54,7 @@ func All() []Module {
 		{Name: "boards", Register: boards.Register, Migrate: boards.Migrate},
 		{Name: "drive", Register: drive.Register, Migrate: drive.Migrate},
 		{Name: "vault", Register: vault.Register, Migrate: vault.Migrate},
+		{Name: "console", Register: console.Register, Migrate: nil},
 	}
 }
 

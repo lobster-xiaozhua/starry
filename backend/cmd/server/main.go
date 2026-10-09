@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -15,12 +16,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/mojocn/base64Captcha"
+	"github.com/swaggo/files"
+	"github.com/swaggo/gin-swagger"
+
+	_ "starry/backend/docs"
 
 	"starry/backend/internal/authpkg"
+	"starry/backend/internal/bootcheck"
 	"starry/backend/internal/config"
 	"starry/backend/internal/core"
 	"starry/backend/internal/logx"
 	"starry/backend/internal/middleware"
+	"starry/backend/internal/migration"
 	"starry/backend/internal/modules"
 	"starry/backend/internal/service"
 	"starry/backend/internal/sse"
@@ -34,11 +41,31 @@ var version = "dev"
 // main 是组合根（composition root）：只负责构建基础设施与共享依赖，
 // 再由 modules.RegisterAll 装配各业务模块。业务路由不在本文件出现，
 // 新增/下线模块只需改动 modules 注册表与对应模块包，或直接用环境变量开关。
+//
+// @title           Starry API
+// @version         1.0
+// @description    Starry full-stack application API documentation
+// @BasePath        /api
+// @host            localhost:8080
+// @securityDefinitions  BearerAuth
+// @in               header
+// @name             Authorization
+// @type             string
 func main() {
+	// --migrate <up|down|version>: 运行迁移后退出，不启动服务。
+	migrateFlag := flag.String("migrate", "", "run migrations (up|down|version) then exit")
+	flag.Parse()
+
 	cfg := config.Load()
 	// 日志要在配置校验之前初始化：校验失败也要有结构化输出，而不是裸 log。
 	logx.Setup(cfg.AppEnv, cfg.LogLevel)
 	log := logx.L()
+
+	// 独立迁移模式：只连接数据库执行迁移，不启动 HTTP 服务。
+	if *migrateFlag != "" {
+		runMigration(*migrateFlag, cfg, log)
+		return
+	}
 
 	if err := cfg.Validate(); err != nil {
 		log.Error("config invalid", "error", err)
@@ -104,16 +131,35 @@ func main() {
 	// 数据完整性启动自愈：先一次性清理历史孤儿行（外键约束的先决条件，含磁盘文件回收），
 	// 再幂等补建全库外键约束。必须在 seedAdmin 之后：users 为空时任何行都无法归属，
 	// 会被误判为孤儿。失败即退出（fail-fast）：带病启动只会让不一致继续放大。
+	var orphanCount int
 	if n, err := db.CleanupOrphanRows(); err != nil {
 		log.Error("orphan rows cleanup failed", "error", err)
 		os.Exit(1)
 	} else if n > 0 {
 		log.Info("orphan rows cleaned", "count", n)
+		orphanCount = int(n)
 	}
 	if err := db.EnsureForeignKeys(); err != nil {
 		log.Error("foreign keys ensure failed", "error", err)
 		os.Exit(1)
 	}
+
+	// Record boot-time self-check results for the product console.
+	// After this point, all monitoring is based on real traffic data.
+	bootcheck.Record(&bootcheck.Result{
+		Timestamp: time.Now(),
+		AppEnv:    cfg.AppEnv,
+		Version:   version,
+		Checks: []bootcheck.Check{
+			{Name: "postgres", Status: "ok"},
+			{Name: "redis", Status: "ok"},
+			{Name: "extensions", Status: "ok"},
+			{Name: "migration", Status: "ok"},
+			{Name: "orphan_cleanup", Status: "ok", Count: orphanCount},
+			{Name: "foreign_keys", Status: "ok"},
+		},
+		Modules: buildModuleStatus(),
+	})
 
 	broker := sse.NewBroker(rds.Raw())
 
@@ -142,6 +188,7 @@ func main() {
 	// 体积上限刻意放在业务之前：越早拒绝超大请求，白花的内存与 CPU 越少。
 	r.Use(
 		middleware.RequestID(),
+		middleware.Metrics(),
 		middleware.Recovery(),
 		middleware.RequestLogger("/health"),
 		middleware.BodyLimit(cfg.MaxBodyBytes),
@@ -157,9 +204,15 @@ func main() {
 
 	r.Static("/uploads", cfg.UploadDir)
 
-	// 健康检查：供 docker compose / 负载均衡探活。pg 与 redis 任一不可用返回 503。
-	// 带上 version：滚动更新后一眼确认跑的是哪个构建，避免「以为发版了其实没发」。
+	// /health 是存活探针（liveness）：只检查进程是否存活，不检查依赖。
+	// 用于 docker compose / 负载均衡判断容器是否需要重启。
 	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "version": version})
+	})
+
+	// /ready 是就绪探针（readiness）：检查 DB 与 redis 是否可用。
+	// pg 与 redis 任一不可用返回 503，表示尚未准备好接受流量。
+	r.GET("/ready", func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 		defer cancel()
 		if err := db.Ping(); err != nil {
@@ -172,6 +225,15 @@ func main() {
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "postgres": true, "redis": true, "version": version})
 	})
+
+	// /metrics 暴露 Prometheus 指标（见 middleware.Metrics），不走 JWT 鉴权。
+	// compose 网络隔离限制访问：仅监控网络可跨网络访问。
+	r.GET("/metrics", middleware.MetricsHandler())
+
+	// /swagger/* API documentation UI. Controlled by SWAGGER_ENABLED env.
+	if os.Getenv("SWAGGER_ENABLED") != "false" || cfg.AppEnv != "production" {
+		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	}
 
 	// 用 http.Server 包裹 gin 引擎，设置超时并支持优雅关闭。
 	// WriteTimeout 不设置（0）：对话/笔记 SSE 流式响应需要长写超时，由各 handler 自行控制；
@@ -208,6 +270,40 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info("server exited")
+}
+
+// runMigration handles the --migrate CLI flag: connects to the database,
+// runs the requested migration command, and exits.
+func runMigration(action string, cfg *config.Config, log *slog.Logger) {
+	dsn := fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.DBSSLMode,
+	)
+	sourceURL := "file://migrations"
+	switch action {
+	case "up":
+		if err := migration.Up(sourceURL, dsn); err != nil {
+			log.Error("migration up failed", "error", err)
+			os.Exit(1)
+		}
+		log.Info("migration up completed")
+	case "down":
+		if err := migration.Down(sourceURL, dsn, 1); err != nil {
+			log.Error("migration down failed", "error", err)
+			os.Exit(1)
+		}
+		log.Info("migration down completed (1 step)")
+	case "version":
+		v, dirty, err := migration.Version(sourceURL, dsn)
+		if err != nil {
+			log.Error("migration version failed", "error", err)
+			os.Exit(1)
+		}
+		log.Info("migration version", "version", v, "dirty", dirty)
+	default:
+		log.Error("unknown migrate action", "action", action)
+		os.Exit(1)
+	}
 }
 
 // seedAdmin 首次启动时创建管理员账号。若未提供 ADMIN_PASSWORD：
@@ -257,4 +353,17 @@ func generateRandomPassword() string {
 		b[i] = charset[idx.Int64()]
 	}
 	return string(b)
+}
+
+// buildModuleStatus builds the module enabled/disabled list from the
+// modules registry, avoiding an import cycle (bootcheck cannot import modules).
+func buildModuleStatus() []bootcheck.ModuleStatus {
+	list := make([]bootcheck.ModuleStatus, 0)
+	for _, m := range modules.All() {
+		list = append(list, bootcheck.ModuleStatus{
+			Name:    m.Name,
+			Enabled: modules.Enabled(m.Name),
+		})
+	}
+	return list
 }
