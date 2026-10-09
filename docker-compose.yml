@@ -14,6 +14,11 @@ services:
       POSTGRES_DB: ${DB_NAME:-login_system}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-login_user}"]
       interval: 5s
@@ -25,11 +30,38 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redisdata:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep -q PONG || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  migrate:
+    # One-shot migration runner: executes golang-migrate up, then exits.
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER:-login_user}
+      DB_PASSWORD: ${DB_PASSWORD:-login_pass_2026}
+      DB_NAME: ${DB_NAME:-login_system}
+      DB_SSLMODE: disable
+      APP_ENV: production
+      LOG_LEVEL: info
+    command: ["/app/server", "--migrate", "up"]
+    volumes:
+      - ./backend/migrations:/app/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   backend:
     build:
@@ -66,15 +98,26 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       embed:
         condition: service_healthy
     volumes:
       - uploads:/data/uploads
       - drive:/data/drive
+      - backendtmp:/tmp
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     expose:
       - "8080"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/ready || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -101,10 +144,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - agenttmp:/tmp
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
     expose:
       - "3001"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/ready || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -128,6 +181,15 @@ services:
       - "3002"
     volumes:
       - models:/data/models
+      - embedtmp:/tmp
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
       interval: 5s
@@ -153,3 +215,6 @@ volumes:
   uploads:
   drive:
   models:
+  backendtmp:
+  agenttmp:
+  embedtmp:

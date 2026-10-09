@@ -13,10 +13,12 @@ ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION}" -o /out/server ./cmd/server
 
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata wget \
+    && adduser -D -u 10001 appuser \
+    && mkdir -p /data/uploads /data/drive /tmp \
+    && chown -R appuser /app /data /tmp
 WORKDIR /app
 COPY --from=build /out/server /app/server
-RUN mkdir -p /data/uploads
-VOLUME ["/data/uploads"]
+USER appuser
 EXPOSE 8080
 CMD ["/app/server"]

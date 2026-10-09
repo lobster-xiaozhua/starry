@@ -3,6 +3,7 @@
 // 这样单元测试无需下载 25MB 嵌入模型，就能验证鉴权与降级契约。
 import express from "express";
 import cors from "cors";
+import logger from "./logger.js";
 
 export type ModelState = "pending" | "ready" | "error";
 
@@ -55,7 +56,7 @@ export function createApp(deps: AppDeps): express.Express {
       const embeddings = await deps.embedService.embed(texts.slice(0, MAX_TEXTS));
       res.json({ embeddings });
     } catch (e: any) {
-      console.error("[embed] embed failed:", e);
+      logger.error({ err: e }, "embed failed");
       res.status(500).json({ code: 3002, message: e?.message || "embed failed" });
     }
   });

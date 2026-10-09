@@ -6,6 +6,8 @@ import { requestContext } from "./context.js";
 import { supervisorExecutor, dailyExecutor } from "./agents.js";
 import { createModel } from "./llm.js";
 import { maybeSummarize, extractUsage } from "./history.js";
+import { metricsHandler } from "./metrics.js";
+import logger from "./logger.js";
 import {
   listMessages,
   saveMessage,
@@ -31,7 +33,11 @@ const app = express();
 app.use(cors({ origin: process.env.AGENT_CORS_ORIGIN || "http://127.0.0.1:5173", credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
-const JWT_SECRET = process.env.JWT_SECRET || "notes-test-secret-fixed";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  logger.error("JWT_SECRET is not set, refusing to start");
+  process.exit(1);
+}
 const PORT = parseInt(process.env.PORT || "3001", 10);
 
 app.use("/api/agent", authMiddleware(JWT_SECRET));
@@ -72,7 +78,7 @@ app.post("/api/agent/chat", async (req, res) => {
   res.on("close", () => {
     if (!res.writableEnded) {
       closed = true;
-      console.warn("[agent] client disconnected mid-stream");
+      logger.warn("client disconnected mid-stream");
     }
   });
 
@@ -202,7 +208,7 @@ app.post("/api/agent/chat", async (req, res) => {
       }
     });
   } catch (err: any) {
-    console.error("[agent] error:", err);
+    logger.error({ err }, "agent error");
     send("error", { message: err?.message || "内部错误" });
   } finally {
     res.end();
@@ -307,6 +313,29 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+// Prometheus metrics
+app.get("/metrics", metricsHandler);
+
+// 就绪探针：检查 Redis 连通性
+app.get("/ready", async (_req, res) => {
+  try {
+    const redis = (await import("ioredis")).default;
+    const client = new redis({
+      host: process.env.REDIS_ADDR?.split(":")[0] || "redis",
+      port: parseInt(process.env.REDIS_ADDR?.split(":")[1] || "6379", 10),
+      password: process.env.REDIS_PASSWORD || undefined,
+      db: parseInt(process.env.REDIS_DB || "0", 10),
+      maxRetriesPerRequest: 1,
+      connectTimeout: 2000,
+    });
+    await client.ping();
+    client.disconnect();
+    res.json({ status: "ok", redis: true });
+  } catch {
+    res.status(503).json({ status: "degraded", redis: false });
+  }
+});
+
 app.listen(PORT, () => {
-  console.log(`[agent] listening on :${PORT}`);
+  logger.info({ port: PORT }, "agent service listening");
 });

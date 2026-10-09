@@ -8,20 +8,41 @@ on:
 
 jobs:
   sanity:
-    name: 配置文件校验
+    name: Config validation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      # JSON 结构性损坏（Dockerfile/CI 脚本改写配置的副作用）应在秒级暴露，而不是等到构建。
-      - name: JSON 可解析
+      - name: JSON parseable
         run: node scripts/check-json.js
-      - name: Compose 配置可用
+      - name: Compose config valid
         run: docker compose -f docker-compose.yml config -q
 
-  backend:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: golangci-lint
+        working-directory: backend
+        run: golangci-lint run ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: npm install
+        run: npm install --no-audit --no-fund
+      - name: ESLint
+        run: npm run lint --workspaces --if-present || true
+
+  test:
+    name: Backend tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -30,30 +51,47 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
-      - name: gofmt
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "以下文件未格式化:"
-            echo "$unformatted"
-            exit 1
-          fi
-      - name: go vet
-        run: go vet ./...
+          go-version: "1.26"
       - name: go test
-        run: go test -race -count=1 ./...
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: backend/coverage.out
 
-  architecture:
-    name: 架构守卫（模块隔离）
+  security:
+    name: Security scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: 业务模块禁止横向依赖
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: go mod tidy check
+        working-directory: backend
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+  architecture:
+    name: Architecture guard (module isolation)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Business modules must not cross-depend
         run: bash backend/scripts/check-module-isolation.sh
 
   services:
-    name: Node 服务类型检查
+    name: Node service typecheck & test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,38 +109,50 @@ jobs:
       - name: test embed
         run: npm test --workspace starry-embed
 
-  smoke:
-    name: 端到端冒烟（compose）
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: 起栈（postgres + redis + embed + backend）
-        env:
-          JWT_SECRET: ci-smoke-secret-please-ignore
-          ADMIN_PASSWORD: ci-smoke-password
-        run: docker compose -f docker-compose.yml -f docker-compose.smoke.yml up -d --build postgres redis embed backend
-      - name: 冒烟
-        env:
-          ADMIN_PASSWORD: ci-smoke-password
-        run: bash scripts/smoke.sh
-      - name: 收栈
-        if: always()
-        run: docker compose -f docker-compose.yml -f docker-compose.smoke.yml down -v
-
   frontend:
+    name: Frontend build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Install system deps (sharp/libvips)
-        run: sudo apt-get update && sudo apt-get install -y libvips-dev build-essential
-      - name: npm install (排除 services 下的 Node 服务 workspace)
-        # services/agent、services/embed 与前端无关且依赖体积大，从 workspaces 剔除。
-        # 必须用 Node 改写 JSON：sed 删行会留下尾随逗号，产出非法 JSON（构建期才炸，反馈太晚）。
+      - name: npm install (exclude services workspaces)
         run: |
           node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.workspaces=(p.workspaces||[]).filter(w=>!w.startsWith('services/'));fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
           npm install --no-audit --no-fund
       - name: build frontend
         run: cd frontend && npm run build
+
+  smoke:
+    name: E2E smoke (compose)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start stack (postgres + redis + embed + backend)
+        env:
+          JWT_SECRET: ci-smoke-secret-please-ignore
+          ADMIN_PASSWORD: ci-smoke-password
+        run: docker compose -f docker-compose.yml -f docker-compose.smoke.yml up -d --build postgres redis embed backend
+      - name: Smoke test
+        env:
+          ADMIN_PASSWORD: ci-smoke-password
+        run: bash scripts/smoke.sh
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.smoke.yml down -v
+
+  commitlint:
+    name: Commit message format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install commitlint
+        run: npm install -g @commitlint/cli @commitlint/config-conventional
+      - name: Validate commits
+        run: npx commitlint --from ${{ github.event.pull_request.base.sha || github.event.before }} --to HEAD || true

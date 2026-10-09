@@ -5,6 +5,8 @@
 import "dotenv/config";
 
 import { createApp, type ModelState } from "./app.js";
+import { metricsHandler, setModelState } from "./metrics.js";
+import logger from "./logger.js";
 import { embedTexts } from "./embed.js";
 
 const PORT = parseInt(process.env.PORT || "3002", 10);
@@ -29,14 +31,19 @@ const app = createApp({
   try {
     await embedTexts(["warmup"]);
     modelState = "ready";
-    console.log("[embed] embedding model ready");
+    setModelState("ready");
+    logger.info("embedding model ready");
   } catch (e: any) {
     modelState = "error";
+    setModelState("error");
     modelError = e?.message || String(e);
-    console.error("[embed] embedding model load failed:", e);
+    logger.error({ err: e }, "embedding model load failed");
   }
 })();
 
 app.listen(PORT, () => {
-  console.log(`[embed] listening on :${PORT}`);
+  // Prometheus metrics endpoint
+  app.get("/metrics", metricsHandler);
+  setModelState(modelState);
+  logger.info({ port: PORT }, "embed service listening");
 });
