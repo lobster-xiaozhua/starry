@@ -9,6 +9,7 @@ import {
   InputNumber,
   List,
   Menu,
+  Pagination,
   Space,
   Spin,
   Switch,
@@ -58,12 +59,16 @@ const SECTION_META: { key: MenuKey; title: string; desc: string; icon: React.Ele
   { key: 'captcha', title: '验证码开关', desc: '登录图形验证码的启用状态', icon: Eye },
 ]
 
-export default function AdminSettings() {
+export default function AdminSettings({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate()
   const { message } = App.useApp()
   const [settings, setSettings] = useState<AuthSettings | null>(null)
   const [saving, setSaving] = useState(false)
   const [users, setUsers] = useState<AdminUserView[]>([])
+  const [usersTotal, setUsersTotal] = useState(0)
+  const [usersPage, setUsersPage] = useState(1)
+  const [usersPageSize, setUsersPageSize] = useState(50)
+  const [usersLoading, setUsersLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [activeKey, setActiveKey] = useState<MenuKey>('password')
   const [highlight, setHighlight] = useState<MenuKey | null>(null)
@@ -72,12 +77,20 @@ export default function AdminSettings() {
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadUsers = useCallback(
-    async (keyword: string) => {
+    async (keyword: string, page: number, size: number) => {
+      setUsersLoading(true)
       try {
-        const res = await api.get('/admin/users', { params: keyword ? { search: keyword } : {} })
+        const params: Record<string, unknown> = { page, size }
+        if (keyword) params.search = keyword
+        const res = await api.get('/admin/users', { params })
         setUsers(res.data.data.users ?? [])
+        setUsersTotal(res.data.data.total ?? 0)
+        setUsersPage(page)
       } catch (err) {
         message.error(formatError(err))
+      }
+      finally {
+        setUsersLoading(false)
       }
     },
     [message],
@@ -91,7 +104,7 @@ export default function AdminSettings() {
         form.setFieldsValue(res.data.data)
       })
       .catch(() => navigate('/login', { replace: true }))
-    void loadUsers('')
+    void loadUsers('', 1, 50)
   }, [form, navigate, loadUsers])
 
   useEffect(() => {
@@ -169,7 +182,7 @@ export default function AdminSettings() {
       const res = await api.post(`/admin/users/${id}/unlock`)
       if (res.data.code === 0) {
         message.success('已解除锁定并清零失败计数')
-        void loadUsers(search)
+        void loadUsers(search, usersPage, usersPageSize)
       }
     } catch (err) {
       message.error(formatError(err))
@@ -306,7 +319,7 @@ export default function AdminSettings() {
           <Users size={20} style={{ verticalAlign: '-3px', marginRight: 8, color: '#0f172a' }} aria-hidden />
           用户管理
         </h1>
-        <Tag color="success">共 {users.length} 个用户</Tag>
+        <Tag color="success">共 {usersTotal} 个用户</Tag>
       </div>
       <Divider style={{ margin: '20px 0' }} />
       <Space.Compact style={{ width: '100%', marginBottom: 16 }}>
@@ -315,11 +328,11 @@ export default function AdminSettings() {
           placeholder="搜索用户名或邮箱"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          onPressEnter={() => void loadUsers(search)}
+          onPressEnter={() => void loadUsers(search, 1, usersPageSize)}
         />
-        <Button onClick={() => void loadUsers(search)}>搜索</Button>
+        <Button onClick={() => void loadUsers(search, 1, usersPageSize)}>搜索</Button>
       </Space.Compact>
-      {users.length === 0 ? (
+      {!usersLoading && users.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description="没有匹配的用户"
@@ -327,6 +340,7 @@ export default function AdminSettings() {
         />
       ) : (
         <List
+          loading={usersLoading}
           dataSource={users}
           renderItem={(u) => (
             <List.Item
@@ -380,6 +394,25 @@ export default function AdminSettings() {
           )}
         />
       )}
+      {usersTotal > 0 && (
+        <Pagination
+          style={{ marginTop: 16 }}
+          current={usersPage}
+          total={usersTotal}
+          pageSize={usersPageSize}
+          showSizeChanger
+          pageSizeOptions={[20, 50, 100, 200]}
+          showTotal={(t) => `第 ${usersPage} 页 / 共 ${Math.max(1, Math.ceil(t / usersPageSize))} 页`}
+          onChange={(pg, size) => {
+            setUsersPageSize(size)
+            void loadUsers(search, pg, size)
+          }}
+          onShowSizeChange={(_pg, size) => {
+            setUsersPageSize(size)
+            void loadUsers(search, 1, size)
+          }}
+        />
+      )}
     </div>
   )
 
@@ -394,17 +427,19 @@ export default function AdminSettings() {
 
   return (
     <>
-      <div className="app-topbar">
-        <div className="brand">
-          <span className="brand-mark">
-            <ShieldCheck size={18} aria-hidden />
-          </span>
-          登录安全参数管理
+      {!embedded && (
+        <div className="app-topbar">
+          <div className="brand">
+            <span className="brand-mark">
+              <ShieldCheck size={18} aria-hidden />
+            </span>
+            登录安全参数管理
+          </div>
+          <Button type="text" icon={<LogOut size={16} aria-hidden />} onClick={logout} style={{ color: '#334155' }}>
+            退出登录
+          </Button>
         </div>
-        <Button type="text" icon={<LogOut size={16} aria-hidden />} onClick={logout} style={{ color: '#334155' }}>
-          退出登录
-        </Button>
-      </div>
+      )}
       <div className="admin-shell">
         <aside className="admin-sidebar">
           <div className="sidebar-title">安全参数</div>

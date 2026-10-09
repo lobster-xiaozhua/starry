@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
-import { Button, Input, Spin, Modal, App, Tooltip } from 'antd'
+import { Button, Input, Spin, Modal, App, Tooltip, Pagination } from 'antd'
 import {
   ArrowLeft,
   Plus,
@@ -15,14 +15,13 @@ import {
   Sparkles,
 } from 'lucide-react'
 import {
-  listConversations,
+  listConversationsPage,
   createConversation,
   deleteConversation,
   renameConversation,
   listMessages,
   streamChat,
   type Conversation,
-  type AgentMessage,
   type AgentSSEEvent,
 } from './agent.ts'
 import { createNote } from '../notes/notes.ts'
@@ -74,6 +73,9 @@ export default function Chat({ mode = 'work' }: { mode?: 'daily' | 'work' }) {
   const [searchParams] = useSearchParams()
   const { message: antdMessage } = App.useApp()
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [convPage, setConvPage] = useState(1)
+  const [convTotal, setConvTotal] = useState(0)
+  const [convLoading, setConvLoading] = useState(false)
   const [activeConv, setActiveConv] = useState<string | null>(null)
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [input, setInput] = useState('')
@@ -88,14 +90,24 @@ export default function Chat({ mode = 'work' }: { mode?: 'daily' | 'work' }) {
   const skipNextLoadRef = useRef(false)
   const autoTitledRef = useRef<Set<string>>(new Set())
 
-  const loadConversations = useCallback(async () => {
-    try {
-      const convs = await listConversations()
-      setConversations(convs)
-    } catch {
-      antdMessage.error('加载对话列表失败')
-    }
-  }, [antdMessage])
+  const CONV_PAGE_SIZE = 50
+
+  const loadConversations = useCallback(
+    async (page: number = convPage) => {
+      setConvLoading(true)
+      try {
+        const { conversations: convs, total } = await listConversationsPage(page, CONV_PAGE_SIZE)
+        setConversations(convs)
+        setConvTotal(total)
+        setConvPage(page)
+      } catch {
+        antdMessage.error('加载对话列表失败')
+      } finally {
+        setConvLoading(false)
+      }
+    },
+    [convPage, antdMessage],
+  )
 
   useEffect(() => {
     loadConversations()
@@ -387,6 +399,7 @@ export default function Chat({ mode = 'work' }: { mode?: 'daily' | 'work' }) {
             </Button>
           </div>
           <div style={{ flex: 1, overflow: 'auto' }}>
+            <Spin spinning={convLoading} style={{ minHeight: 60 }}>
             {conversations.map((conv) => (
               <div
                 key={conv.id}
@@ -424,7 +437,20 @@ export default function Chat({ mode = 'work' }: { mode?: 'daily' | 'work' }) {
                 暂无对话
               </div>
             )}
+            </Spin>
           </div>
+          {convTotal > CONV_PAGE_SIZE && (
+            <div style={{ padding: 8, borderTop: '1px solid #e2e8f0', textAlign: 'center' }}>
+              <Pagination
+                simple
+                size="small"
+                current={convPage}
+                total={convTotal}
+                pageSize={CONV_PAGE_SIZE}
+                onChange={(pg) => void loadConversations(pg)}
+              />
+            </div>
+          )}
         </aside>
 
         {/* 消息区 */}

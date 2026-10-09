@@ -22,6 +22,21 @@ export async function listConversations(): Promise<Conversation[]> {
   return res.data.data?.conversations ?? []
 }
 
+// 分页版对话列表，返回真实 total，供 Chat 侧栏翻页使用。
+export async function listConversationsPage(
+  page: number,
+  size: number,
+): Promise<{ conversations: Conversation[]; total: number }> {
+  const res = await api.get<ApiResponse<{ conversations: Conversation[]; total: number }>>(
+    '/agent/conversations',
+    { params: { page, size } },
+  )
+  return {
+    conversations: res.data.data?.conversations ?? [],
+    total: res.data.data?.total ?? 0,
+  }
+}
+
 export async function createConversation(title?: string): Promise<Conversation> {
   const res = await api.post<ApiResponse<Conversation>>('/agent/conversations', { title })
   const conv = res.data.data
