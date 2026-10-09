@@ -38,8 +38,8 @@ func CORS(allowed string) gin.HandlerFunc {
 	}
 }
 
-// JWTAuth 从 Authorization header 解析访问令牌；SSE 等无法带 header 的通道
-// 通过 query 参数 token 传参，middleware 兼容两种来源。
+// JWTAuth 从 Authorization header 解析访问令牌。SSE 连接通过 fetchEventSource
+// 携带 Authorization header，不再需要 URL query 参数传递 token。
 func JWTAuth(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := extractClaims(c, secret)
@@ -58,9 +58,6 @@ func extractClaims(c *gin.Context, secret string) (*authpkg.Claims, error) {
 	header := c.GetHeader("Authorization")
 	if header != "" && strings.HasPrefix(header, "Bearer ") {
 		return authpkg.ParseAccessToken(secret, strings.TrimPrefix(header, "Bearer "))
-	}
-	if q := c.Query("token"); q != "" {
-		return authpkg.ParseAccessToken(secret, q)
 	}
 	return nil, errors.New("missing token")
 }

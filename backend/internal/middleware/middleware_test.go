@@ -52,7 +52,8 @@ func TestRateLimitBlocksAfterMax(t *testing.T) {
 	}
 }
 
-// TestJWTAuth 覆盖令牌缺失、无效与有效三种路径，并支持 query 传参（SSE 无法带 header）。
+// TestJWTAuth 覆盖令牌缺失、无效与有效三种路径。SSE 连接通过 fetchEventSource
+// 携带 Authorization header，不再支持 query 参数传 token。
 func TestJWTAuth(t *testing.T) {
 	const secret = "test-secret"
 	gin.SetMode(gin.TestMode)
@@ -84,9 +85,10 @@ func TestJWTAuth(t *testing.T) {
 	if !contains(w.Body.String(), "tester") {
 		t.Fatalf("应将 username 注入上下文（供审计记录可读身份），实际 %s", w.Body.String())
 	}
-	// query 传参（SSE 通道）
-	if w := get(r, "", nil, "?token="+token); w.Code != http.StatusOK {
-		t.Fatalf("query 传参的有效令牌应放行，实际 %d", w.Code)
+	// query 传参已移除：SSE 现在通过 fetchEventSource 携带 Authorization header，
+	// token 不再从 URL query 参数提取（避免凭据暴露在日志/URL 中）。
+	if w := get(r, "", nil, "?token="+token); w.Code != http.StatusUnauthorized {
+		t.Fatalf("query 传参已移除，应返回 401，实际 %d", w.Code)
 	}
 }
 
