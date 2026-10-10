@@ -203,7 +203,7 @@ export default function EditorPage() {
           }}
          placeholder="笔记标题"
           style={{ flex: 1, maxWidth: 400, fontWeight: 600 }}
-          bordered={false}
+          variant="borderless"
         />
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <Select

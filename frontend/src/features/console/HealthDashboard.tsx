@@ -241,9 +241,19 @@ export default function HealthDashboard() {
             >
               <Cpu size={18} />
             </div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>运行环境</div>
-              <div style={{ fontWeight: 600 }}>{boot?.appEnv ?? '—'}</div>
+              <div
+                style={{
+                  fontWeight: 600,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={boot?.appEnv ?? ''}
+              >
+                {boot?.appEnv ?? '—'}
+              </div>
             </div>
           </Card>
         </Col>

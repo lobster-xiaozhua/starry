@@ -53,9 +53,7 @@ export default function Console() {
       }}
     >
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' }}>
-          控制台
-        </div>
+        <div style={{ fontSize: 22, fontWeight: 800 }}>控制台</div>
         <div style={{ color: 'var(--text-secondary)', marginTop: 4 }}>
           系统健康监控、项目配置与用户管理
         </div>
@@ -65,7 +63,7 @@ export default function Console() {
         onChange={(k) => setActiveTab(k as TabKey)}
         items={items}
         size="large"
-        destroyInactiveTabPane
+        destroyOnHidden
       />
     </div>
   )

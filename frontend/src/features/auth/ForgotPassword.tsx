@@ -34,7 +34,7 @@ export default function ForgotPassword() {
     <div className="auth-page">
       <div className="auth-layout">
         <BrandPanel title="找回密码" subtitle="通过注册邮箱安全重置你的登录密码，全程防枚举保护。" />
-        <Card className="auth-card" bordered={false}>
+        <Card className="auth-card" variant="borderless">
           <div className="auth-brand-header">
             <span className="brand-mark">
               <MailQuestion size={20} aria-hidden />

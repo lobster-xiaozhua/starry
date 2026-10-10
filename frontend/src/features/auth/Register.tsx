@@ -67,7 +67,7 @@ export default function Register() {
     <div className="auth-page">
       <div className="auth-layout">
         <BrandPanel title="创建你的账号" subtitle="注册后即可使用，密码强度要求实时来自管理员安全策略。" />
-        <Card className="auth-card" bordered={false}>
+        <Card className="auth-card" variant="borderless">
           <div className="auth-brand-header">
             <span className="brand-mark">
               <UserPlus size={20} aria-hidden />

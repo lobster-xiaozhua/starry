@@ -16,6 +16,8 @@ export default function AppShell() {
   const location = useLocation()
   const { dark, toggle } = useTheme()
   const [user, setUser] = useState<AuthUser | null>(null)
+  // 窄屏（<992px）折叠为图标栏：220px 侧栏会在手机上占掉半屏，正文被挤成竖排。
+  const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
     fetchMe().then(setUser).catch(() => {})
@@ -62,18 +64,23 @@ export default function AppShell() {
       <Layout style={{ height: '100vh' }}>
         <Sider
           width={220}
+          collapsedWidth={72}
+          breakpoint="lg"
+          collapsed={collapsed}
+          onCollapse={setCollapsed}
           theme={dark ? 'dark' : 'light'}
           style={{ borderRight: `1px solid ${dark ? '#1e293b' : '#e2e8f0'}`, position: 'relative' }}
         >
           <div
             style={{
-              padding: '18px 16px 8px',
+              padding: collapsed ? '18px 0 8px' : '18px 16px 8px',
+              textAlign: collapsed ? 'center' : 'left',
               fontWeight: 700,
               fontSize: 16,
               color: dark ? '#f1f5f9' : '#0f172a',
             }}
           >
-            Starry
+            {collapsed ? 'S' : 'Starry'}
           </div>
           <Menu
             mode="inline"
@@ -86,13 +93,15 @@ export default function AppShell() {
           <div
             style={{
               borderTop: `1px solid ${dark ? '#1e293b' : '#e2e8f0'}`,
-              padding: 12,
+              padding: collapsed ? 8 : 12,
               display: 'flex',
               alignItems: 'center',
-              gap: 10,
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              flexWrap: 'wrap',
+              gap: collapsed ? 0 : 10,
             }}
           >
-            {user && (
+            {user && !collapsed && (
               <Avatar
                 size={30}
                 style={{
@@ -103,18 +112,20 @@ export default function AppShell() {
                 {user.username.slice(0, 1).toUpperCase()}
               </Avatar>
             )}
-            <span
-              style={{
-                flex: 1,
-                fontSize: 13,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                color: dark ? '#f1f5f9' : '#0f172a',
-              }}
-            >
-              {user?.username}
-            </span>
+            {!collapsed && (
+              <span
+                style={{
+                  flex: 1,
+                  fontSize: 13,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  color: dark ? '#f1f5f9' : '#0f172a',
+                }}
+              >
+                {user?.username}
+              </span>
+            )}
             <Button type="text" onClick={toggle} icon={dark ? <Sun size={16} /> : <Moon size={16} />} />
             <Button type="text" onClick={handleLogout} icon={<LogOut size={16} />} />
           </div>

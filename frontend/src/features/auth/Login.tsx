@@ -90,7 +90,7 @@ export default function Login() {
     <div className="auth-page">
       <div className="auth-layout">
         <BrandPanel title="安全的账号认证体系" subtitle="为企业内部系统提供可管理的登录安全策略与完整会话控制。" />
-        <Card className="auth-card" bordered={false}>
+        <Card className="auth-card" variant="borderless">
           <div className="auth-brand-header">
             <span className="brand-mark">
               <KeyRound size={20} aria-hidden />

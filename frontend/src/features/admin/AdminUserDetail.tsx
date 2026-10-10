@@ -179,7 +179,7 @@ export default function AdminUserDetail() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
-        <Card title="账号信息" bordered={false} style={{ background: '#f8fafc' }}>
+        <Card title="账号信息" variant="borderless" style={{ background: '#f8fafc' }}>
           <Descriptions column={1} size="small" labelStyle={{ width: 90, color: 'var(--color-muted)' }}>
             <Descriptions.Item label="用户 ID">
               <code style={{ fontSize: 12, wordBreak: 'break-all' }}>{detail.id}</code>
@@ -192,7 +192,7 @@ export default function AdminUserDetail() {
           </Descriptions>
         </Card>
 
-        <Card title="安全状态" bordered={false} style={{ background: '#f8fafc' }}>
+        <Card title="安全状态" variant="borderless" style={{ background: '#f8fafc' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <UserRound size={16} style={{ color: '#64748b' }} aria-hidden />

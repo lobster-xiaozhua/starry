@@ -44,7 +44,7 @@ export default function ResetPassword() {
       <div className="auth-page">
         <div className="auth-layout">
           <BrandPanel title="设置新密码" subtitle="重置流程完成后，该账号的所有既有会话将被吊销。" />
-          <Card className="auth-card" bordered={false}>
+          <Card className="auth-card" variant="borderless">
             <Result
               status="warning"
               icon={<XCircle size={56} aria-hidden style={{ color: '#f59e0b' }} />}
@@ -68,7 +68,7 @@ export default function ResetPassword() {
     <div className="auth-page">
       <div className="auth-layout">
         <BrandPanel title="设置新密码" subtitle="重置完成后，该账号的所有既有会话将被吊销，需使用新密码登录。" />
-        <Card className="auth-card" bordered={false}>
+        <Card className="auth-card" variant="borderless">
           <div className="auth-brand-header">
             <span className="brand-mark">
               <KeySquare size={20} aria-hidden />
