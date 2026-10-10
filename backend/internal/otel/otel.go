@@ -66,6 +66,8 @@ func Setup(serviceName, endpoint string, log *slog.Logger) *sdktrace.TracerProvi
 		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(1.0))),
 	)
 	otel.SetTracerProvider(tp)
+	// 记录到包级变量：Enabled() 依赖它决定是否挂 otelgin 中间件，Shutdown() 依赖它 flush。
+	Tracer = tp
 	// W3C tracecontext + baggage: enables cross-service span chaining.
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},
