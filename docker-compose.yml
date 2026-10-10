@@ -105,7 +105,6 @@ services:
     volumes:
       - uploads:/data/uploads
       - drive:/data/drive
-      - backendtmp:/tmp
     read_only: true
     tmpfs:
       - /tmp
@@ -144,8 +143,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - agenttmp:/tmp
+    # 只读根文件系统下 /tmp 由 tmpfs 提供（不能同时再挂 named volume，compose 会报冲突）。
     read_only: true
     tmpfs:
       - /tmp
@@ -181,7 +179,6 @@ services:
       - "3002"
     volumes:
       - models:/data/models
-      - embedtmp:/tmp
     read_only: true
     tmpfs:
       - /tmp
@@ -215,6 +212,3 @@ volumes:
   uploads:
   drive:
   models:
-  backendtmp:
-  agenttmp:
-  embedtmp:
