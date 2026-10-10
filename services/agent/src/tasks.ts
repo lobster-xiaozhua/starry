@@ -86,27 +86,29 @@ async function runLongTask(id: string, goal: string, token: string) {
   emit(id, { type: "done", result: lastResult });
 }
 
-// 用 LLM 把目标拆成有序步骤（JSON 数组）。
+// 用 LLM 把目标拆成有序步骤（JSON 数组）；withSpan 把 LLM 规划挂到任务 trace 下。
 async function planSteps(goal: string): Promise<string[]> {
-  const model = createModel();
-  const prompt = [
-    "你是一个任务规划器。请把下面的目标拆成不超过 8 个、可独立执行的有序步骤。",
-    "只输出 JSON 数组（字符串数组），不要解释。例如：[\"步骤1\",\"步骤2\"]。",
-    `目标：${goal}`,
-  ].join("\n");
-  const res = await model.invoke(prompt);
-  const text = typeof res.content === "string" ? res.content : "";
-  const match = text.match(/\[[\s\S]*\]/);
-  if (!match) return [goal];
-  try {
-    const arr = JSON.parse(match[0]);
-    if (Array.isArray(arr) && arr.length > 0) {
-      return arr.map((s) => String(s)).slice(0, 8);
+  return withSpan("task.plan", async () => {
+    const model = createModel();
+    const prompt = [
+      "你是一个任务规划器。请把下面的目标拆成不超过 8 个、可独立执行的有序步骤。",
+      "只输出 JSON 数组（字符串数组），不要解释。例如：[\"步骤1\",\"步骤2\"]。",
+      `目标：${goal}`,
+    ].join("\n");
+    const res = await model.invoke(prompt);
+    const text = typeof res.content === "string" ? res.content : "";
+    const match = text.match(/\[[\s\S]*\]/);
+    if (!match) return [goal];
+    try {
+      const arr = JSON.parse(match[0]);
+      if (Array.isArray(arr) && arr.length > 0) {
+        return arr.map((s) => String(s)).slice(0, 8);
+      }
+    } catch {
+      /* fall through */
     }
-  } catch {
-    /* fall through */
-  }
-  return [goal];
+    return [goal];
+  });
 }
 
 // 单步执行：在 supervisor 上下文中运行，流式推送 token。
@@ -163,3 +165,4 @@ function textContent(content: unknown): string {
   if (content == null) return "";
   return String(content);
 }
+import { withSpan } from "./trace.js";

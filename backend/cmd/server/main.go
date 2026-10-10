@@ -18,6 +18,7 @@ import (
 	"github.com/mojocn/base64Captcha"
 	"github.com/swaggo/files"
 	"github.com/swaggo/gin-swagger"
+	otelgin "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	_ "starry/backend/docs"
 
@@ -29,6 +30,7 @@ import (
 	"starry/backend/internal/middleware"
 	"starry/backend/internal/migration"
 	"starry/backend/internal/modules"
+	"starry/backend/internal/otel"
 	"starry/backend/internal/service"
 	"starry/backend/internal/sse"
 	"starry/backend/internal/store"
@@ -60,6 +62,12 @@ func main() {
 	// 日志要在配置校验之前初始化：校验失败也要有结构化输出，而不是裸 log。
 	logx.Setup(cfg.AppEnv, cfg.LogLevel)
 	log := logx.L()
+
+	// 分布式追踪（可选）：OTEL_EXPORTER_OTLP_ENDPOINT 已配置时启用 OTLP gRPC 导出到 Jaeger；
+	// 未配置则完全 no-op，对现有链路零影响。
+	if tp := otel.Setup("starry-backend", cfg.OtelEndpoint, log); tp != nil {
+		defer func() { _ = otel.Shutdown() }()
+	}
 
 	// 独立迁移模式：只连接数据库执行迁移，不启动 HTTP 服务。
 	if *migrateFlag != "" {
@@ -183,6 +191,11 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
+	// 追踪启用时给 gin 挂 otel 中间件（注入 W3C traceparent 到出站 header），
+	// 使后端→embed/agent 的跨服务 span 能串到同一 trace；未启用则零开销。
+	if otel.Enabled() {
+		r.Use(otelgin.Middleware("starry-backend"))
+	}
 	// 顺序：请求 ID → 恢复 → 访问日志 → 体积上限 → 安全响应头 → CORS。
 	// Recovery 放在日志之前，panic 才能被记录成一条完整访问日志而不是丢失。
 	// 体积上限刻意放在业务之前：越早拒绝超大请求，白花的内存与 CPU 越少。

@@ -4,6 +4,7 @@
 import express from "express";
 import cors from "cors";
 import logger from "./logger.js";
+import { withSpan } from "./trace.js";
 
 export type ModelState = "pending" | "ready" | "error";
 
@@ -53,7 +54,12 @@ export function createApp(deps: AppDeps): express.Express {
       return;
     }
     try {
-      const embeddings = await deps.embedService.embed(texts.slice(0, MAX_TEXTS));
+      // 向量化本身是 CPU 密集操作；withSpan 让该耗时挂在调用方 trace 下
+      // （未启用追踪时等价于直接调用）。
+      const target = texts.slice(0, MAX_TEXTS);
+      const embeddings = await withSpan("embed.batch", async () =>
+        deps.embedService.embed(target),
+      );
       res.json({ embeddings });
     } catch (e: any) {
       logger.error({ err: e }, "embed failed");

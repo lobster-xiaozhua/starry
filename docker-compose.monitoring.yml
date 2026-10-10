@@ -2,6 +2,29 @@
 # Usage: docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
 
 services:
+  backend:
+    networks:
+      - default
+      - monitoring
+    environment:
+      # OTLP gRPC 导出到 Jaeger（4317 已由 all-in-one 开启）；
+      # 未使用 monitoring 覆盖文件部署时保持不配置 → 后端追踪 no-op。
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
+
+  agent:
+    networks:
+      - default
+      - monitoring
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
+
+  embed:
+    networks:
+      - default
+      - monitoring
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
+
   prometheus:
     image: prom/prometheus:latest
     volumes:

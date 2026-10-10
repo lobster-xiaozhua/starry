@@ -8,11 +8,15 @@ import { createApp, type ModelState } from "./app.js";
 import { metricsHandler, setModelState } from "./metrics.js";
 import logger from "./logger.js";
 import { embedTexts } from "./embed.js";
+import { initTracing } from "./trace.js";
 
 const PORT = parseInt(process.env.PORT || "3002", 10);
 
 // 内部端点鉴权令牌；未配置时视为开发环境放行。
 const INTERNAL_TOKEN = process.env.AGENT_INTERNAL_TOKEN || "";
+
+// 分布式追踪（可选）：配置 OTEL_EXPORTER_OTLP_ENDPOINT 后启用，未配置零开销。
+void initTracing("starry-embed");
 
 // 嵌入模型加载状态：异步预热，不阻塞进程启动；供 /health 暴露以便运维观测。
 // 属于「精细调控」里可观测性的一环——一眼能看出向量化是否就绪。

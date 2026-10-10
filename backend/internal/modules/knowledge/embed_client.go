@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"starry/backend/internal/logx"
 )
 
@@ -39,6 +41,8 @@ type embedClient struct {
 }
 
 func newEmbedClient(endpoint, token string) *embedClient {
+	// otelhttp 包裹 Transport：出站请求自动携带 W3C traceparent，
+	// embed 服务的 span 会挂在当前 trace 之下；追踪未启用时为 no-op 透传。
 	return &embedClient{
 		endpoint: strings.TrimSuffix(endpoint, "/") + "/api/agent/embed",
 		token:    token,
@@ -48,7 +52,7 @@ func newEmbedClient(endpoint, token string) *embedClient {
 		http: &http.Client{
 			// embed 首次调用要加载模型，给足整体超时；细粒度超时由 Transport 控制。
 			Timeout: 60 * time.Second,
-			Transport: &http.Transport{
+			Transport: otelhttp.NewTransport(&http.Transport{
 				MaxIdleConns:          16,
 				MaxIdleConnsPerHost:   8,
 				IdleConnTimeout:       90 * time.Second,
@@ -59,7 +63,7 @@ func newEmbedClient(endpoint, token string) *embedClient {
 					KeepAlive: 30 * time.Second,
 				}).DialContext,
 				TLSHandshakeTimeout: 5 * time.Second,
-			},
+			}),
 		},
 	}
 }

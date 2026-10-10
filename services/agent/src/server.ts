@@ -8,6 +8,7 @@ import { createModel } from "./llm.js";
 import { maybeSummarize, extractUsage } from "./history.js";
 import { metricsHandler } from "./metrics.js";
 import logger from "./logger.js";
+import { initTracing, withSpan } from "./trace.js";
 import {
   listMessages,
   saveMessage,
@@ -38,6 +39,9 @@ if (!JWT_SECRET) {
   logger.error("JWT_SECRET is not set, refusing to start");
   process.exit(1);
 }
+
+// 分布式追踪（可选）：配置 OTEL_EXPORTER_OTLP_ENDPOINT 后自动启用，未配置零开销。
+void initTracing("starry-agent");
 const PORT = parseInt(process.env.PORT || "3001", 10);
 
 app.use("/api/agent", authMiddleware(JWT_SECRET));
@@ -109,104 +113,108 @@ app.post("/api/agent/chat", async (req, res) => {
     // 3. 在 requestContext 中运行 agent，工具通过 AsyncLocalStorage 获取 token
     const newMessages: BaseMessage[] = [new HumanMessage(message)];
 
-    await requestContext.run({ token, userId, role: req.userRole! }, async () => {
-      const executor = isDaily ? dailyExecutor : supervisorExecutor;
-      const eventStream = executor.streamEvents(
-        { messages: [...historyBase, ...newMessages] },
-        { version: "v2" },
-      );
+    // 追踪启用时给整轮 agent 执行打一个 span（LLM 流、工具调用都挂在其下）；
+    // 未配置 OTEL_EXPORTER_OTLP_ENDPOINT 时 withSpan 是零开销透传。
+    await withSpan(`agent.chat ${isDaily ? "daily" : "supervisor"}`, () =>
+      requestContext.run({ token, userId, role: req.userRole! }, async () => {
+          const executor = isDaily ? dailyExecutor : supervisorExecutor;
+          const eventStream = executor.streamEvents(
+            { messages: [...historyBase, ...newMessages] },
+            { version: "v2" },
+          );
 
-      let assistantContent = "";
-      const agentUsage = { promptTokens: 0, completionTokens: 0 };
-      const persistedMessages: Array<{
-        role: "assistant" | "tool";
-        content: string;
-        toolCalls?: string;
-        toolCallId?: string;
-      }> = [];
-      const pendingToolCallIds: string[] = [];
+        let assistantContent = "";
+        const agentUsage = { promptTokens: 0, completionTokens: 0 };
+        const persistedMessages: Array<{
+          role: "assistant" | "tool";
+          content: string;
+          toolCalls?: string;
+          toolCallId?: string;
+        }> = [];
+        const pendingToolCallIds: string[] = [];
 
-      for await (const event of eventStream) {
-        if (closed) break;
-        // LLM token 流
-        if (event.event === "on_chat_model_stream") {
-          const chunk = event.data?.chunk;
-          const token = textContent(chunk?.content);
-          if (token.length > 0) {
-            send("token", { content: token });
-          }
-        }
-        // LLM 输出完成 — 收集 tool_calls
-        else if (event.event === "on_chat_model_end") {
-          const output = event.data?.output;
-          const content = textContent(output?.content);
-          if (content.length > 0) assistantContent = content;
-          // 累加本轮 LLM 用量（多轮工具调用会多次触发 on_chat_model_end）
-          const u = extractUsage(output);
-          agentUsage.promptTokens += u.promptTokens;
-          agentUsage.completionTokens += u.completionTokens;
-          if (output?.tool_calls?.length > 0) {
-            const toolCalls = output.tool_calls as any[];
-            for (const call of toolCalls) {
-              if (call.id) pendingToolCallIds.push(call.id);
+        for await (const event of eventStream) {
+          if (closed) break;
+          // LLM token 流
+          if (event.event === "on_chat_model_stream") {
+            const chunk = event.data?.chunk;
+            const token = textContent(chunk?.content);
+            if (token.length > 0) {
+              send("token", { content: token });
             }
+          }
+          // LLM 输出完成 — 收集 tool_calls
+          else if (event.event === "on_chat_model_end") {
+            const output = event.data?.output;
+            const content = textContent(output?.content);
+            if (content.length > 0) assistantContent = content;
+            // 累加本轮 LLM 用量（多轮工具调用会多次触发 on_chat_model_end）
+            const u = extractUsage(output);
+            agentUsage.promptTokens += u.promptTokens;
+            agentUsage.completionTokens += u.completionTokens;
+            if (output?.tool_calls?.length > 0) {
+              const toolCalls = output.tool_calls as any[];
+              for (const call of toolCalls) {
+                if (call.id) pendingToolCallIds.push(call.id);
+              }
+              persistedMessages.push({
+                role: "assistant",
+                content,
+                toolCalls: JSON.stringify(toolCalls),
+              });
+            }
+          }
+          // 工具调用开始
+          else if (event.event === "on_tool_start") {
+            send("tool_call", {
+              id: event.id,
+              name: event.name,
+              args: event.data?.input,
+            });
+          }
+          // 工具返回
+          else if (event.event === "on_tool_end") {
+            const result = textContent(event.data?.output);
+            send("tool_result", {
+              id: event.id,
+              name: event.name,
+              result: result.length > 500 ? result.slice(0, 500) + "…" : result,
+            });
             persistedMessages.push({
-              role: "assistant",
-              content,
-              toolCalls: JSON.stringify(toolCalls),
+              role: "tool",
+              content: result,
+              toolCallId: pendingToolCallIds.shift() || "unknown",
             });
           }
         }
-        // 工具调用开始
-        else if (event.event === "on_tool_start") {
-          send("tool_call", {
-            id: event.id,
-            name: event.name,
-            args: event.data?.input,
-          });
+
+        // 4. 持久化新消息到 Go 后端
+        // 保存用户消息
+        await saveMessage(token, conversationId, {
+          role: "user",
+          content: message,
+        });
+
+        // 保存 agent 产生的 assistant tool-call、tool result 和最终 assistant 消息。
+        if (assistantContent || persistedMessages.length === 0) {
+          persistedMessages.push({ role: "assistant", content: assistantContent });
         }
-        // 工具返回
-        else if (event.event === "on_tool_end") {
-          const result = textContent(event.data?.output);
-          send("tool_result", {
-            id: event.id,
-            name: event.name,
-            result: result.length > 500 ? result.slice(0, 500) + "…" : result,
-          });
-          persistedMessages.push({
-            role: "tool",
-            content: result,
-            toolCallId: pendingToolCallIds.shift() || "unknown",
-          });
+        for (const persisted of persistedMessages) {
+          await saveMessage(token, conversationId, persisted);
         }
-      }
 
-      // 4. 持久化新消息到 Go 后端
-      // 保存用户消息
-      await saveMessage(token, conversationId, {
-        role: "user",
-        content: message,
-      });
+        // 上报 token 用量（agent 本轮 + 摘要调用）到 Go/Redis
+        await recordUsage(token, {
+          promptTokens: agentUsage.promptTokens + summaryUsage.promptTokens,
+          completionTokens: agentUsage.completionTokens + summaryUsage.completionTokens,
+        });
 
-      // 保存 agent 产生的 assistant tool-call、tool result 和最终 assistant 消息。
-      if (assistantContent || persistedMessages.length === 0) {
-        persistedMessages.push({ role: "assistant", content: assistantContent });
-      }
-      for (const persisted of persistedMessages) {
-        await saveMessage(token, conversationId, persisted);
-      }
-
-      // 上报 token 用量（agent 本轮 + 摘要调用）到 Go/Redis
-      await recordUsage(token, {
-        promptTokens: agentUsage.promptTokens + summaryUsage.promptTokens,
-        completionTokens: agentUsage.completionTokens + summaryUsage.completionTokens,
-      });
-
-      // 客户端已断开则不再下发 done，节省一次网络写入
-      if (!closed) {
-        send("done", { content: assistantContent });
-      }
-    });
+        // 客户端已断开则不再下发 done，节省一次网络写入
+        if (!closed) {
+          send("done", { content: assistantContent });
+        }
+        })
+    );
   } catch (err: any) {
     logger.error({ err }, "agent error");
     send("error", { message: err?.message || "内部错误" });
