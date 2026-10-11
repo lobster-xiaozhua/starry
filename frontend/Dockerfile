@@ -17,7 +17,15 @@ COPY package.json ./package.json
 RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.workspaces=(p.workspaces||[]).filter(w=>!w.startsWith('services/'));fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
 COPY packages/shared-api ./packages/shared-api
 COPY frontend ./frontend
-RUN npm install --no-audit --no-fund
+# npm 源：默认国内镜像（受限网络下 registry.npmjs.org 常 DNS 解析失败）；
+# 可按部署环境覆盖：--build-arg NPM_REGISTRY=https://registry.npmjs.org
+ARG NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/
+RUN --mount=type=cache,target=/root/.npm \
+    npm config set registry "$NPM_REGISTRY" \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm install --no-audit --no-fund
+ENV NODE_OPTIONS=--max-old-space-size=1536
 RUN cd frontend && npm run build
 
 FROM nginx:1.27-alpine

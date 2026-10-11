@@ -43,9 +43,8 @@ services:
 
   migrate:
     # One-shot migration runner: executes golang-migrate up, then exits.
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    # 复用 backend 构建的镜像（同一 Dockerfile 不再构建两次；up --build 会先构建 backend）。
+    image: starry-backend:${VERSION:-dev}
     environment:
       DB_HOST: postgres
       DB_PORT: "5432"
@@ -64,6 +63,7 @@ services:
     restart: "no"
 
   backend:
+    image: starry-backend:${VERSION:-dev}
     build:
       context: ./backend
       dockerfile: Dockerfile

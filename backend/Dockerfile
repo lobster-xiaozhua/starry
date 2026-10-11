@@ -6,16 +6,20 @@ ENV GOPROXY=https://mirrors.tencent.com/go/,direct
 ENV GOSUMDB=off
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+# BuildKit 缓存挂载：模块与编译缓存在多次构建间复用（Go 编译是 CPU 密集，
+# 命中缓存后整棵依赖图无需重编译）。legacy builder 下会退化为普通 RUN。
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 # VERSION 由 compose/CI 传入（默认取 git 短哈希），注入到 /health 的 version 字段。
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION}" -o /out/server ./cmd/server
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION}" -o /out/server ./cmd/server
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata wget \
     && adduser -D -u 10001 appuser \
-    && mkdir -p /data/uploads /data/drive /tmp \
+    && mkdir -p /app /data/uploads /data/drive /tmp \
     && chown -R appuser /app /data /tmp
 WORKDIR /app
 COPY --from=build /out/server /app/server
