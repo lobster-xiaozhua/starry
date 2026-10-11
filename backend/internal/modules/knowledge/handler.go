@@ -50,6 +50,15 @@ func (h *Handler) userID(c *gin.Context) (uuid.UUID, bool) {
 
 // Ingest POST /api/knowledge/ingest
 // 接收一段文本（标题+正文），切分为分块并向量化后入库。
+// @Summary      知识库文档入库（分块 + 向量化）
+// @Tags         knowledge
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Failure      503 {object} map[string]interface{}
+// @Router       /knowledge/ingest [post]
 func (h *Handler) Ingest(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -133,6 +142,15 @@ func (h *Handler) Ingest(c *gin.Context) {
 
 // Search GET /api/knowledge/search?q=...&k=5
 // 对查询做向量化后在用户知识库内做相似度检索，返回片段（供 agent 的 knowledge_search 工具使用）。
+// @Summary      知识库语义检索
+// @Tags         knowledge
+// @Produce      json
+// @Security     BearerAuth
+// @Param        q  query  string  true  "检索问题"
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Failure      503 {object} map[string]interface{}
+// @Router       /knowledge/search [get]
 func (h *Handler) Search(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -168,6 +186,13 @@ func (h *Handler) Search(c *gin.Context) {
 }
 
 // List GET /api/knowledge/docs
+// @Summary      已入库文档列表
+// @Tags         knowledge
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      503 {object} map[string]interface{}
+// @Router       /knowledge/docs [get]
 func (h *Handler) List(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -183,6 +208,14 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 // Delete DELETE /api/knowledge/docs/:id
+// @Summary      删除知识库文档（含分块）
+// @Tags         knowledge
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "文档 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /knowledge/docs/{id} [delete]
 func (h *Handler) Delete(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {

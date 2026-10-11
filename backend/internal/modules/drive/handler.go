@@ -68,6 +68,14 @@ func (h *Handler) parseParent(c *gin.Context, raw string) (*uuid.UUID, bool) {
 }
 
 // List GET /api/drive?parent=<id|root>
+// @Summary      网盘目录列表
+// @Tags         drive
+// @Produce      json
+// @Security     BearerAuth
+// @Param        parent  query  string  false  "父目录 ID，缺省为根目录"
+// @Success      200 {object} map[string]interface{}
+// @Failure      503 {object} map[string]interface{}
+// @Router       /drive [get]
 func (h *Handler) List(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -127,6 +135,14 @@ func (h *Handler) resolveParent(c *gin.Context, uid uuid.UUID, raw string) (*uui
 }
 
 // CreateFolder POST /api/drive/folders  {name, parentID?}
+// @Summary      新建文件夹
+// @Tags         drive
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /drive/folders [post]
 func (h *Handler) CreateFolder(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -158,6 +174,13 @@ func (h *Handler) CreateFolder(c *gin.Context) {
 }
 
 // Upload POST /api/drive/upload  (multipart: file, parentID?)
+// @Summary      上传文件（multipart/form-data）
+// @Tags         drive
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      413 {object} map[string]interface{}
+// @Router       /drive/upload [post]
 func (h *Handler) Upload(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -239,6 +262,14 @@ func (h *Handler) Upload(c *gin.Context) {
 }
 
 // Download GET /api/drive/:id/download
+// @Summary      下载文件
+// @Tags         drive
+// @Produce      application/octet-stream
+// @Security     BearerAuth
+// @Param        id  path  string  true  "文件节点 ID"
+// @Success      200 {file} binary
+// @Failure      404 {object} map[string]interface{}
+// @Router       /drive/{id}/download [get]
 func (h *Handler) Download(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -272,6 +303,15 @@ func (h *Handler) Download(c *gin.Context) {
 }
 
 // Rename PATCH /api/drive/:id  {name}
+// @Summary      重命名文件或文件夹
+// @Tags         drive
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "节点 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /drive/{id} [patch]
 func (h *Handler) Rename(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -297,6 +337,14 @@ func (h *Handler) Rename(c *gin.Context) {
 }
 
 // Delete DELETE /api/drive/:id  （文件夹递归删除）
+// @Summary      删除节点（文件夹递归删除）
+// @Tags         drive
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "节点 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /drive/{id} [delete]
 func (h *Handler) Delete(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {

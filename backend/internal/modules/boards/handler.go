@@ -46,6 +46,13 @@ func (h *Handler) parseID(c *gin.Context, param string) (uuid.UUID, bool) {
 }
 
 // List GET /api/boards
+// @Summary      看板列表（含列与任务）
+// @Tags         boards
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      503 {object} map[string]interface{}
+// @Router       /boards [get]
 func (h *Handler) List(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -64,6 +71,14 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 // Create POST /api/boards  {name, color?}
+// @Summary      新建看板
+// @Tags         boards
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /boards [post]
 func (h *Handler) Create(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -87,6 +102,15 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 // Update PATCH /api/boards/:id  {name?, color?, position?}
+// @Summary      更新看板
+// @Tags         boards
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "看板 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /boards/{id} [patch]
 func (h *Handler) Update(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -114,6 +138,14 @@ func (h *Handler) Update(c *gin.Context) {
 }
 
 // Delete DELETE /api/boards/:id
+// @Summary      删除看板（级联删除列与任务）
+// @Tags         boards
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "看板 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /boards/{id} [delete]
 func (h *Handler) Delete(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -132,6 +164,15 @@ func (h *Handler) Delete(c *gin.Context) {
 }
 
 // CreateColumn POST /api/boards/:id/columns  {title}
+// @Summary      新建看板列
+// @Tags         boards
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "看板 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /boards/{id}/columns [post]
 func (h *Handler) CreateColumn(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -169,6 +210,15 @@ func (h *Handler) CreateColumn(c *gin.Context) {
 }
 
 // UpdateColumn PATCH /api/columns/:id  {title?, position?}
+// @Summary      更新看板列
+// @Tags         boards
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "列 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /columns/{id} [patch]
 func (h *Handler) UpdateColumn(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -195,6 +245,14 @@ func (h *Handler) UpdateColumn(c *gin.Context) {
 }
 
 // DeleteColumn DELETE /api/columns/:id
+// @Summary      删除看板列
+// @Tags         boards
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "列 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /columns/{id} [delete]
 func (h *Handler) DeleteColumn(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -213,6 +271,15 @@ func (h *Handler) DeleteColumn(c *gin.Context) {
 }
 
 // CreateTask POST /api/boards/:id/tasks  {title, columnId, note?, priority?, due?}
+// @Summary      在列中新建任务
+// @Tags         boards
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "看板 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /boards/{id}/tasks [post]
 func (h *Handler) CreateTask(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -285,6 +352,15 @@ func (h *Handler) CreateTask(c *gin.Context) {
 
 // UpdateTask PATCH /api/tasks/:id
 // 可更新：title, note, priority, due, columnId, position（移动/改状态）
+// @Summary      更新任务（含跨列移动）
+// @Tags         boards
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "任务 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /tasks/{id} [patch]
 func (h *Handler) UpdateTask(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -368,6 +444,14 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 }
 
 // DeleteTask DELETE /api/tasks/:id
+// @Summary      删除任务
+// @Tags         boards
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "任务 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /tasks/{id} [delete]
 func (h *Handler) DeleteTask(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {

@@ -46,6 +46,13 @@ func (h *Handler) parseID(c *gin.Context, param string) (uuid.UUID, bool) {
 
 // GetSalt GET /api/vault/salt  → {salt, verifier}
 // 返回现有密钥材料；若无则生成随机 salt 并落库后返回（salt 非机密）。
+// @Summary      获取保险箱 KDF 盐
+// @Tags         vault
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      503 {object} map[string]interface{}
+// @Router       /vault/salt [get]
 func (h *Handler) GetSalt(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -62,6 +69,14 @@ func (h *Handler) GetSalt(c *gin.Context) {
 
 // Setup POST /api/vault/setup  {verifier}
 // 首次设定主密码：客户端用主密码派生密钥加密已知常量，把密文（verifier）写入。
+// @Summary      初始化保险箱（写入校验值）
+// @Tags         vault
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /vault/setup [post]
 func (h *Handler) Setup(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -83,6 +98,13 @@ func (h *Handler) Setup(c *gin.Context) {
 }
 
 // ListItems GET /api/vault/items  → {items: VaultItem[]}（含密文）
+// @Summary      保险箱条目列表
+// @Tags         vault
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      503 {object} map[string]interface{}
+// @Router       /vault/items [get]
 func (h *Handler) ListItems(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -101,6 +123,14 @@ func (h *Handler) ListItems(c *gin.Context) {
 }
 
 // CreateItem POST /api/vault/items  {title, type, encrypted}
+// @Summary      新建保险箱条目（密文由客户端加密）
+// @Tags         vault
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /vault/items [post]
 func (h *Handler) CreateItem(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -133,6 +163,15 @@ func (h *Handler) CreateItem(c *gin.Context) {
 }
 
 // UpdateItem PATCH /api/vault/items/:id  {title?, encrypted?}
+// @Summary      更新保险箱条目
+// @Tags         vault
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "条目 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /vault/items/{id} [patch]
 func (h *Handler) UpdateItem(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -159,6 +198,14 @@ func (h *Handler) UpdateItem(c *gin.Context) {
 }
 
 // DeleteItem DELETE /api/vault/items/:id
+// @Summary      删除保险箱条目
+// @Tags         vault
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "条目 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /vault/items/{id} [delete]
 func (h *Handler) DeleteItem(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {

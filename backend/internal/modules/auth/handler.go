@@ -149,6 +149,13 @@ func (h *Handler) Register(c *gin.Context) {
 	}
 }
 
+// @Summary      忘记密码（发送重置令牌）
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /auth/forgot-password [post]
 func (h *Handler) ForgotPassword(c *gin.Context) {
 	var req forgotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -162,6 +169,13 @@ func (h *Handler) ForgotPassword(c *gin.Context) {
 	core.OK(c, gin.H{"message": "如果该邮箱已注册，重置链接已发送"})
 }
 
+// @Summary      重置密码（使用一次性令牌）
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /auth/reset-password [post]
 func (h *Handler) ResetPassword(c *gin.Context) {
 	var req resetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -204,6 +218,13 @@ func (h *Handler) Refresh(c *gin.Context) {
 	core.OK(c, gin.H{"accessToken": accessToken})
 }
 
+// @Summary      退出登录（吊销刷新令牌）
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /auth/logout [post]
 func (h *Handler) Logout(c *gin.Context) {
 	var req logoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -217,6 +238,13 @@ func (h *Handler) Logout(c *gin.Context) {
 // ListLockouts GET /api/auth/security/lockouts
 // 只读的安全可观测端点：列出当前被锁定的账号及其失败次数、剩余锁定秒数。
 // 由认证模块自己提供而非 admin 模块，避免 admin→auth 的跨模块依赖（模块隔离约束）。
+// @Summary      锁定账号列表
+// @Tags         auth
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      503 {object} map[string]interface{}
+// @Router       /auth/security/lockouts [get]
 func (h *Handler) ListLockouts(c *gin.Context) {
 	lockouts, err := h.auth.ListLockouts(c.Request.Context())
 	if err != nil {
@@ -243,6 +271,11 @@ func (h *Handler) Me(c *gin.Context) {
 	core.OK(c, gin.H{"user": user, "serverTime": time.Now().Format(time.RFC3339)})
 }
 
+// @Summary      当前密码策略
+// @Tags         auth
+// @Produce      json
+// @Success      200 {object} map[string]interface{}
+// @Router       /auth/password-policy [get]
 func (h *Handler) PasswordPolicy(c *gin.Context) {
 	settings, err := h.settingsSvc.Get(c.Request.Context())
 	if err != nil {

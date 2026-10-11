@@ -73,6 +73,7 @@ install-hooks:
 
 ## docs: generate OpenAPI docs (swaggo)
 docs:
+	@command -v swag >/dev/null 2>&1 || { echo "swag 未安装，请先执行: go install github.com/swaggo/swag/cmd/swag@v1.16.6"; exit 1; }
 	cd $(BACKEND_DIR) && swag init -g cmd/server/main.go -o docs
 
 ## migrate-up: run database migrations forward

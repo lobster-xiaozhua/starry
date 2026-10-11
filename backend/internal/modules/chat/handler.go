@@ -71,6 +71,14 @@ func (h *Handler) ListConversations(c *gin.Context) {
 }
 
 // CreateConversation POST /api/agent/conversations
+// @Summary      新建对话
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /agent/conversations [post]
 func (h *Handler) CreateConversation(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -98,6 +106,15 @@ func (h *Handler) CreateConversation(c *gin.Context) {
 
 // RenameConversation PATCH /api/agent/conversations/:id
 // 更新对话标题（侧栏内联重命名、首条消息自动命名均走此端点）。
+// @Summary      重命名对话
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "对话 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /agent/conversations/{id} [patch]
 func (h *Handler) RenameConversation(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -141,6 +158,14 @@ func (h *Handler) RenameConversation(c *gin.Context) {
 }
 
 // DeleteConversation DELETE /api/agent/conversations/:id
+// @Summary      删除对话（含消息）
+// @Tags         chat
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "对话 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      500 {object} map[string]interface{}
+// @Router       /agent/conversations/{id} [delete]
 func (h *Handler) DeleteConversation(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -160,6 +185,16 @@ func (h *Handler) DeleteConversation(c *gin.Context) {
 }
 
 // ListMessages GET /api/agent/conversations/:id/messages
+// @Summary      对话消息列表（窗口裁剪 + 可选摘要压缩）
+// @Tags         chat
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id        path   string  true   "对话 ID"
+// @Param        limit     query  integer false "返回条数上限，默认 50，上限 500"
+// @Param        compress  query  string  false "是否压缩历史：1/true 表示压缩"
+// @Success      200       {object} map[string]interface{}
+// @Failure      404       {object} map[string]interface{}
+// @Router       /agent/conversations/{id}/messages [get]
 func (h *Handler) ListMessages(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -198,6 +233,15 @@ func (h *Handler) ListMessages(c *gin.Context) {
 }
 
 // SaveMessage POST /api/agent/conversations/:id/messages
+// @Summary      写入一条消息
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "对话 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /agent/conversations/{id}/messages [post]
 func (h *Handler) SaveMessage(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -299,6 +343,13 @@ func (h *Handler) DeleteMessages(c *gin.Context) {
 
 // SeedDemo POST /api/agent/conversations/seed-demo
 // 为该用户灌入一条示例对话（仅在尚无对话时执行，幂等）。便于新用户一键体验 AI。
+// @Summary      灌入示例对话（幂等，仅在无对话时执行）
+// @Tags         chat
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      500 {object} map[string]interface{}
+// @Router       /agent/conversations/seed-demo [post]
 func (h *Handler) SeedDemo(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -343,6 +394,13 @@ func (h *Handler) RecordUsage(c *gin.Context) {
 
 // GetUsage GET /api/agent/usage
 // 返回用户累计的 prompt/completion token 用量。
+// @Summary      查询累计 token 用量
+// @Tags         chat
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      500 {object} map[string]interface{}
+// @Router       /agent/usage [get]
 func (h *Handler) GetUsage(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -362,6 +420,14 @@ func (h *Handler) GetUsage(c *gin.Context) {
 // 用户通过 agent 服务的 SSE 端点实时跟踪进度；此处提供 CRUD 与取消。
 
 // CreateTask POST /api/agent/tasks
+// @Summary      创建长程任务（异步执行）
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /agent/tasks [post]
 func (h *Handler) CreateTask(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -396,6 +462,13 @@ func (h *Handler) CreateTask(c *gin.Context) {
 }
 
 // ListTasks GET /api/agent/tasks
+// @Summary      任务列表
+// @Tags         chat
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      500 {object} map[string]interface{}
+// @Router       /agent/tasks [get]
 func (h *Handler) ListTasks(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -411,6 +484,14 @@ func (h *Handler) ListTasks(c *gin.Context) {
 }
 
 // GetTask GET /api/agent/tasks/:id
+// @Summary      任务详情
+// @Tags         chat
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "任务 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /agent/tasks/{id} [get]
 func (h *Handler) GetTask(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -481,6 +562,14 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 
 // CancelTask POST /api/agent/tasks/:id/cancel
 // 标记任务为 canceled；agent 执行器会在步骤间隙检查此状态并停止。
+// @Summary      取消任务
+// @Tags         chat
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "任务 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      500 {object} map[string]interface{}
+// @Router       /agent/tasks/{id}/cancel [post]
 func (h *Handler) CancelTask(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {

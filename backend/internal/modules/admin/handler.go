@@ -37,6 +37,13 @@ type updateSettingsRequest struct {
 	CaptchaEnabled         bool `json:"captchaEnabled"`
 }
 
+// @Summary      读取登录安全策略
+// @Tags         admin
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      503 {object} map[string]interface{}
+// @Router       /admin/settings [get]
 func (h *Handler) GetSettings(c *gin.Context) {
 	settings, err := h.settingsSvc.Get(c.Request.Context())
 	if err != nil {
@@ -46,6 +53,14 @@ func (h *Handler) GetSettings(c *gin.Context) {
 	core.OK(c, settings)
 }
 
+// @Summary      更新登录安全策略（即时生效）
+// @Tags         admin
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /admin/settings [put]
 func (h *Handler) UpdateSettings(c *gin.Context) {
 	var req updateSettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -118,6 +133,14 @@ func (h *Handler) ListUsers(c *gin.Context) {
 	core.OK(c, gin.H{"users": users, "total": total})
 }
 
+// @Summary      用户详情
+// @Tags         admin
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "用户 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /admin/users/{id} [get]
 func (h *Handler) GetUser(c *gin.Context) {
 	userID := c.Param("id")
 	detail, err := h.adminSvc.GetUser(c.Request.Context(), userID)
@@ -132,6 +155,14 @@ func (h *Handler) GetUser(c *gin.Context) {
 	core.OK(c, detail)
 }
 
+// @Summary      解除用户锁定并清零失败计数
+// @Tags         admin
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "用户 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /admin/users/{id}/unlock [post]
 func (h *Handler) UnlockUser(c *gin.Context) {
 	userID := c.Param("id")
 	if err := h.adminSvc.UnlockUser(c.Request.Context(), userID); err != nil {
@@ -148,6 +179,14 @@ func (h *Handler) UnlockUser(c *gin.Context) {
 	core.OK(c, gin.H{"message": "已解除锁定并清零失败计数"})
 }
 
+// @Summary      强制重置用户密码（返回一次性令牌）
+// @Tags         admin
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "用户 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /admin/users/{id}/reset-password [post]
 func (h *Handler) ForceResetPassword(c *gin.Context) {
 	userID := c.Param("id")
 	token, err := h.adminSvc.ForceResetPassword(c.Request.Context(), userID)
@@ -165,6 +204,14 @@ func (h *Handler) ForceResetPassword(c *gin.Context) {
 	core.OK(c, gin.H{"token": token, "message": "重置令牌已生成（30 分钟内有效，单次使用）"})
 }
 
+// @Summary      吊销用户全部会话
+// @Tags         admin
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "用户 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /admin/users/{id}/revoke-sessions [post]
 func (h *Handler) RevokeSessions(c *gin.Context) {
 	userID := c.Param("id")
 	if err := h.adminSvc.RevokeSessions(c.Request.Context(), userID); err != nil {
@@ -181,6 +228,14 @@ func (h *Handler) RevokeSessions(c *gin.Context) {
 	core.OK(c, gin.H{"message": "已吊销该用户全部在线会话"})
 }
 
+// @Summary      冻结账号并吊销会话
+// @Tags         admin
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "用户 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      403 {object} map[string]interface{}
+// @Router       /admin/users/{id}/freeze [post]
 func (h *Handler) FreezeUser(c *gin.Context) {
 	userID := c.Param("id")
 	if userID == c.GetString("userID") {
@@ -207,6 +262,14 @@ func (h *Handler) FreezeUser(c *gin.Context) {
 	core.OK(c, gin.H{"message": "账号已冻结，该用户全部会话已吊销"})
 }
 
+// @Summary      解冻账号
+// @Tags         admin
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "用户 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /admin/users/{id}/unfreeze [post]
 func (h *Handler) UnfreezeUser(c *gin.Context) {
 	userID := c.Param("id")
 	if err := h.adminSvc.UnfreezeUser(c.Request.Context(), userID); err != nil {
@@ -225,6 +288,14 @@ func (h *Handler) UnfreezeUser(c *gin.Context) {
 
 // DeleteUser 安全删除用户：吊销其全部会话，级联清理其所有业务数据（含网盘与
 // 笔记附件的磁盘文件），最后硬删账号。不允许删除自己，也不允许删除管理员。
+// @Summary      删除用户（级联清理其业务数据与磁盘文件）
+// @Tags         admin
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "用户 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      403 {object} map[string]interface{}
+// @Router       /admin/users/{id} [delete]
 func (h *Handler) DeleteUser(c *gin.Context) {
 	userID := c.Param("id")
 	if userID == c.GetString("userID") {

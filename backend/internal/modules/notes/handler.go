@@ -42,6 +42,18 @@ func (h *Handler) userID(c *gin.Context) (uuid.UUID, bool) {
 	return u, true
 }
 
+// @Summary      笔记列表（搜索 / 标签 / 归档过滤 + 分页）
+// @Tags         notes
+// @Produce      json
+// @Security     BearerAuth
+// @Param        q        query  string  false  "全文搜索关键词"
+// @Param        tag      query  string  false  "按标签过滤"
+// @Param        archived query  string  false  "归档过滤：1=仅归档，0=默认"
+// @Param        page     query  integer false  "页码，默认 1"
+// @Param        size     query  integer false  "每页条数"
+// @Success      200      {object} map[string]interface{}
+// @Failure      503      {object} map[string]interface{}
+// @Router       /notes [get]
 func (h *Handler) List(c *gin.Context) {
 	uid, ok := h.userID(c)
 	if !ok {
@@ -104,6 +116,14 @@ func (h *Handler) SeedDemo(c *gin.Context) {
 	core.OK(c, gin.H{"count": n, "message": "已为你加载示例笔记"})
 }
 
+// @Summary      新建笔记
+// @Tags         notes
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /notes [post]
 func (h *Handler) Create(c *gin.Context) {
 	uid, _ := h.userID(c)
 	var in CreateNoteInput
@@ -120,6 +140,14 @@ func (h *Handler) Create(c *gin.Context) {
 	core.OK(c, note)
 }
 
+// @Summary      笔记详情
+// @Tags         notes
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "笔记 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /notes/{id} [get]
 func (h *Handler) Get(c *gin.Context) {
 	uid, _ := h.userID(c)
 	id, err := uuid.Parse(c.Param("id"))
@@ -135,6 +163,15 @@ func (h *Handler) Get(c *gin.Context) {
 	core.OK(c, note)
 }
 
+// @Summary      更新笔记
+// @Tags         notes
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "笔记 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Router       /notes/{id} [put]
 func (h *Handler) Update(c *gin.Context) {
 	uid, _ := h.userID(c)
 	id, err := uuid.Parse(c.Param("id"))
@@ -156,6 +193,14 @@ func (h *Handler) Update(c *gin.Context) {
 	core.OK(c, note)
 }
 
+// @Summary      删除笔记
+// @Tags         notes
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "笔记 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /notes/{id} [delete]
 func (h *Handler) Delete(c *gin.Context) {
 	uid, _ := h.userID(c)
 	id, err := uuid.Parse(c.Param("id"))
@@ -172,6 +217,14 @@ func (h *Handler) Delete(c *gin.Context) {
 	core.OK(c, gin.H{"id": id.String()})
 }
 
+// @Summary      归档 / 取消归档笔记
+// @Tags         notes
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "笔记 ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /notes/{id}/archive [post]
 func (h *Handler) Archive(c *gin.Context) {
 	uid, _ := h.userID(c)
 	id, err := uuid.Parse(c.Param("id"))
@@ -198,6 +251,13 @@ func (h *Handler) Archive(c *gin.Context) {
 	core.OK(c, gin.H{"id": id.String(), "archived": in.Archived})
 }
 
+// @Summary      标签列表
+// @Tags         notes
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]interface{}
+// @Failure      503 {object} map[string]interface{}
+// @Router       /notes/tags [get]
 func (h *Handler) Tags(c *gin.Context) {
 	uid, _ := h.userID(c)
 	rows, err := h.svc.Tags(c.Request.Context(), uid)
