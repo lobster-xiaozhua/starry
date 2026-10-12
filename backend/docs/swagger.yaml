@@ -1736,4 +1736,10 @@ paths:
       summary: 初始化保险箱（写入校验值）
       tags:
       - vault
+securityDefinitions:
+  BearerAuth:
+    description: JWT 访问令牌，格式：Bearer {token}
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

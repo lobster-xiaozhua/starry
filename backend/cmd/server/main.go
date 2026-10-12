@@ -49,10 +49,10 @@ var version = "dev"
 // @description    Starry full-stack application API documentation
 // @BasePath        /api
 // @host            localhost:8080
-// @securityDefinitions  BearerAuth
-// @in               header
-// @name             Authorization
-// @type             string
+// @securityDefinitions.apikey  BearerAuth
+// @in                          header
+// @name                        Authorization
+// @description                 JWT 访问令牌，格式：Bearer {token}
 func main() {
 	// --migrate <up|down|version>: 运行迁移后退出，不启动服务。
 	migrateFlag := flag.String("migrate", "", "run migrations (up|down|version) then exit")
